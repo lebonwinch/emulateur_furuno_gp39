@@ -1,0 +1,28 @@
+// Style commun des écrans du GP-39 (LCD couleur 480 × 272, fond clair).
+.lcdscreen {
+  position: absolute;
+  inset: 0;
+  font-family: 'Roboto Condensed', 'Arial Narrow', Arial, sans-serif;
+  font-weight: 700;
+  color: #1b1b1b;
+  background: #f3f4f5;
+  overflow: hidden;
+}
+.lcdscreen .sep {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 3px;
+  background: linear-gradient(#c3c6cb, #f7f8f9);
+  border-radius: 1px;
+}
+.lcdscreen .lbl {
+  font-size: 12px;
+  line-height: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.lcdscreen .unit {
+  font-size: 12px;
+  font-weight: 700;
+}
