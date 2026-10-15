@@ -1019,8 +1019,8 @@ function openIoSetup(): void {
             idx: 1,
             onPick: (i) => {
               if (i !== 0) return
-              fileHooks.pickFile((text) => {
-                const r = dev.importGpx(text, 'replace')
+              fileHooks.pickFile((text, name) => {
+                const r = dev.importGpx(text, 'replace', name)
                 const lines = [`Loading completed.`, `${r.waypoints} waypoints, ${r.routes} routes.`, 'Push any key.']
                 openMessage('Load WPT/RTE', lines)
               })

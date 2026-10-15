@@ -30,6 +30,16 @@ export interface Waypoint {
   display: boolean
   /** vrai pour le Quick Point (« QP ») créé par GO TO ; jamais exporté */
   qp?: boolean
+  /** calque (un par fichier GPX importé) ; absent des anciennes données, rattaché alors au calque « Appareil » */
+  layer?: number
+}
+
+/** Calque de l'éditeur de waypoints : regroupe les waypoints d'un même fichier source. */
+export interface Layer {
+  id: number
+  name: string
+  /** affiché sur la carte de l'éditeur (le plotter de l'appareil n'est pas concerné) */
+  visible: boolean
 }
 
 export interface RoutePoint {

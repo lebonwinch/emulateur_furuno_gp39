@@ -4,6 +4,14 @@ import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef, triggerRef, watch } from 'vue'
 import { bearing, crossTrack, distance, magneticVariation, norm360, rhumbDestination, type LatLon } from '@/gp39/geo'
 import { buildGpx, parseGpx } from '@/gp39/gpx'
+import {
+  DEVICE_LAYER_NAME,
+  cleanLayerName,
+  duplicateKey,
+  layerCounts as countByLayer,
+  normaliseLayers,
+  selectForExport,
+} from '@/gp39/layers'
 import { defaultSettings, defaultSim, DEFAULT_SHIP, type SimConfig } from '@/gp39/defaults'
 import { debounce, kvClear, kvGet, kvSet } from '@/gp39/persist'
 import { computeFix, createSatellites, stepSatellites, FIX_IS_DIFFERENTIAL, type FixInfo } from '@/gp39/sim'
@@ -14,6 +22,7 @@ import {
   PLOTTER_RANGES,
   type Destination,
   type Fix,
+  type Layer,
   type MobMark,
   type Route,
   type Satellite,
@@ -26,6 +35,7 @@ const DB_KEYS = {
   settings: 'settings',
   sim: 'sim',
   waypoints: 'waypoints',
+  layers: 'layers',
   routes: 'routes',
   track: 'track',
   dest: 'dest',
@@ -58,6 +68,8 @@ export const useDevice = defineStore('device', () => {
 
   const waypoints = shallowRef<Waypoint[]>([])
   const wptVersion = ref(0)
+  /** calques de l'éditeur de waypoints : un par fichier GPX importé */
+  const layers = ref<Layer[]>([])
   const routes = ref<Route[]>([])
   const track = shallowRef<TrackPoint[]>([])
   const trackVersion = ref(0)
@@ -107,6 +119,63 @@ export const useDevice = defineStore('device', () => {
     return 'WP9999'
   }
 
+  // ---------------------------------------------------------------- calques
+  function layerById(id: number | undefined): Layer | undefined {
+    return id === undefined ? undefined : layers.value.find((l) => l.id === id)
+  }
+
+  function addLayer(name?: string): Layer {
+    const l: Layer = { id: Math.max(0, ...layers.value.map((x) => x.id)) + 1, name: cleanLayerName(name ?? ''), visible: true }
+    layers.value.push(l)
+    return layers.value[layers.value.length - 1]!
+  }
+
+  /** Calque des waypoints créés sur l'appareil (MARK, MOB, Quick Point), créé au premier besoin. */
+  function deviceLayer(): Layer {
+    return layers.value.find((l) => l.name === DEVICE_LAYER_NAME) ?? addLayer(DEVICE_LAYER_NAME)
+  }
+
+  function renameLayer(id: number, name: string): boolean {
+    const l = layerById(id)
+    if (!l) return false
+    l.name = cleanLayerName(name, l.name)
+    return true
+  }
+
+  function setLayerVisible(id: number, visible: boolean): void {
+    const l = layerById(id)
+    if (l) l.visible = visible
+  }
+
+  /** Nombre de waypoints par calque (hors Quick Point). */
+  const layerCounts = computed(() => {
+    void wptVersion.value
+    return countByLayer(waypoints.value)
+  })
+
+  /** Déplace des waypoints vers un calque ; renvoie le nombre de waypoints réellement déplacés. */
+  function moveWaypointsToLayer(ids: Iterable<number>, layerId: number): number {
+    if (!layerById(layerId)) return 0
+    const set = new Set(ids)
+    let moved = 0
+    for (const w of waypoints.value) {
+      if (set.has(w.id) && w.layer !== layerId) {
+        w.layer = layerId
+        moved++
+      }
+    }
+    if (moved) touchWaypoints()
+    return moved
+  }
+
+  /** Efface un calque et tous ses waypoints ; si certains sont en cours d'utilisation (destination), ils restent avec le calque. */
+  function deleteLayer(id: number): { deleted: number; blocked: number } | null {
+    if (!layerById(id)) return null
+    const r = deleteWaypoints(waypoints.value.filter((w) => w.layer === id).map((w) => w.id))
+    if (!r.blocked) layers.value = layers.value.filter((l) => l.id !== id)
+    return r
+  }
+
   function addWaypoint(p: Partial<Waypoint> & LatLon): Waypoint | null {
     if (waypoints.value.length >= LIMITS.waypoints) return null
     const w: Waypoint = {
@@ -118,6 +187,7 @@ export const useDevice = defineStore('device', () => {
       color: p.color ?? DEFAULT_COLOR,
       comment: (p.comment ?? '').slice(0, LIMITS.commentLen),
       display: p.display ?? true,
+      layer: layerById(p.layer)?.id ?? deviceLayer().id,
       ...(p.qp ? { qp: true } : {}),
     }
     waypoints.value.push(w)
@@ -146,29 +216,54 @@ export const useDevice = defineStore('device', () => {
     if (patch.symbol !== undefined) w.symbol = patch.symbol
     if (patch.color !== undefined) w.color = patch.color
     if (patch.display !== undefined) w.display = patch.display
+    if (patch.layer !== undefined && layerById(patch.layer)) w.layer = patch.layer
     touchWaypoints()
     return true
   }
 
-  function isWaypointInUse(id: number): boolean {
+  /** Waypoints que la navigation en cours utilise (destination, ou points de la route suivie). */
+  function usedWaypointIds(): Set<number> {
     const d = dest.value
-    if (!d) return false
-    if (d.kind === 'waypoint' || d.kind === 'qp') return d.wptId === id
-    if (d.kind === 'route') return currentRouteSeq().includes(id)
-    return false
+    if (!d) return new Set()
+    if (d.kind === 'waypoint' || d.kind === 'qp') return new Set([d.wptId])
+    if (d.kind === 'route') return new Set(currentRouteSeq())
+    return new Set()
+  }
+
+  function isWaypointInUse(id: number): boolean {
+    return usedWaypointIds().has(id)
   }
 
   /** Efface un waypoint. Interdit pour le point de destination en cours (manuel §3.5). */
   function deleteWaypoint(id: number): boolean {
-    if (isWaypointInUse(id)) return false
-    waypoints.value = waypoints.value.filter((w) => w.id !== id)
-    for (const r of routes.value) r.points = r.points.filter((p) => p.wptId !== id)
-    touchWaypoints()
-    return true
+    return deleteWaypoints([id]).deleted === 1
+  }
+
+  /**
+   * Efface plusieurs waypoints d'un coup (retirés aussi des routes). Ceux qui sont en cours d'utilisation comme destination
+   * ne sont pas effacés (manuel §3.5) : ils sont comptés dans `blocked`.
+   */
+  function deleteWaypoints(ids: Iterable<number>): { deleted: number; blocked: number } {
+    const wanted = new Set(ids)
+    const used = usedWaypointIds()
+    const gone = new Set<number>()
+    let blocked = 0
+    for (const w of waypoints.value) {
+      if (!wanted.has(w.id)) continue
+      if (used.has(w.id)) blocked++
+      else gone.add(w.id)
+    }
+    if (gone.size) {
+      waypoints.value = waypoints.value.filter((w) => !gone.has(w.id))
+      for (const r of routes.value) r.points = r.points.filter((p) => !gone.has(p.wptId))
+      touchWaypoints()
+    }
+    return { deleted: gone.size, blocked }
   }
 
   function deleteAllWaypoints(): void {
     waypoints.value = []
+    layers.value = []
     for (const r of routes.value) r.points = []
     dest.value = null
     touchWaypoints()
@@ -645,37 +740,60 @@ export const useDevice = defineStore('device', () => {
   }
 
   // ---------------------------------------------------------------- import / export
-  function replaceWaypoints(list: Omit<Waypoint, 'id'>[], merge: boolean): { added: number; warnings: string[] } {
+  /** Ajoute les waypoints d'un fichier dans un nouveau calque (créé seulement s'il en reçoit). */
+  function replaceWaypoints(
+    list: Omit<Waypoint, 'id'>[],
+    merge: boolean,
+    layerName: string,
+  ): { added: number; layerId: number | null; warnings: string[] } {
     const warnings: string[] = []
     let base = merge ? waypoints.value.slice() : []
     let incoming = list
     const room = LIMITS.waypoints - base.length
     if (incoming.length > room) {
       warnings.push(`${incoming.length - room} waypoint(s) ignoré(s) (limite ${LIMITS.waypoints})`)
-      incoming = incoming.slice(0, room)
+      incoming = incoming.slice(0, Math.max(0, room))
     }
-    const added: Waypoint[] = incoming.map((w) => ({ ...w, id: nextId++ }))
+    const layerId = incoming.length ? addLayer(layerName).id : null
+    const added: Waypoint[] = incoming.map((w) => ({ ...w, id: nextId++, ...(layerId !== null ? { layer: layerId } : {}) }))
     base = base.concat(added)
     waypoints.value = base
     touchWaypoints()
-    return { added: added.length, warnings }
+    return { added: added.length, layerId, warnings }
   }
 
-  /** Charge un fichier GPX (équivalent de Load WPT/RTE ← USB : remplace tout, ou fusionne). */
-  function importGpx(xml: string, mode: 'replace' | 'merge' = 'replace'): { waypoints: number; routes: number; warnings: string[] } {
+  /**
+   * Charge un fichier GPX (équivalent de Load WPT/RTE ← USB : remplace tout, ou fusionne). Les waypoints du fichier forment un
+   * nouveau calque nommé d'après le fichier. `skipDuplicates` (fusion) ignore ceux qui existent déjà (même nom, position, symbole, couleur).
+   */
+  function importGpx(
+    xml: string,
+    mode: 'replace' | 'merge' = 'replace',
+    fileName = 'Import',
+    opts: { skipDuplicates?: boolean } = {},
+  ): { waypoints: number; routes: number; warnings: string[]; layerId: number | null } {
     const parsed = parseGpx(xml)
     if (!parsed.waypoints.length && !parsed.routes.length) {
       // fichier sans <wpt> ni <rte> (trace seule, XML invalide…) : on ne touche à rien
       const warnings = ['Aucun waypoint ni route dans ce fichier : rien n’a été modifié', ...parsed.warnings]
       importWarnings.value = warnings
-      return { waypoints: 0, routes: 0, warnings }
+      return { waypoints: 0, routes: 0, warnings, layerId: null }
     }
     if (mode === 'replace') {
       routes.value = []
       dest.value = null
+      layers.value = []
     }
-    const r = replaceWaypoints(parsed.waypoints, mode === 'merge')
-    const warnings = [...parsed.warnings, ...r.warnings]
+    let incoming = parsed.waypoints
+    const skipped: string[] = []
+    if (opts.skipDuplicates && mode === 'merge') {
+      const known = new Set(waypoints.value.filter((w) => !w.qp).map(duplicateKey))
+      incoming = incoming.filter((w) => !known.has(duplicateKey(w)))
+      if (incoming.length < parsed.waypoints.length)
+        skipped.push(`${parsed.waypoints.length - incoming.length} doublon(s) déjà présent(s) ignoré(s)`)
+    }
+    const r = replaceWaypoints(incoming, mode === 'merge', cleanLayerName(fileName, 'Import'))
+    const warnings = [...parsed.warnings, ...skipped, ...r.warnings]
     // routes : rattachement aux waypoints par nom (ou par coordonnées)
     let nRoutes = 0
     for (const ir of parsed.routes) {
@@ -696,11 +814,13 @@ export const useDevice = defineStore('device', () => {
       nRoutes++
     }
     importWarnings.value = warnings
-    return { waypoints: r.added, routes: nRoutes, warnings }
+    return { waypoints: r.added, routes: nRoutes, warnings, layerId: r.layerId }
   }
 
-  function exportGpx(): string {
-    return buildGpx(waypoints.value, routes.value)
+  /** Texte GPX des waypoints (sans Quick Point) et des routes ; `layerIds` : seulement ces calques (et les routes qui y tiennent). */
+  function exportGpx(layerIds?: ReadonlySet<number> | null): string {
+    const s = selectForExport(waypoints.value, routes.value, layerIds ?? null)
+    return buildGpx(s.waypoints, s.routes)
   }
 
   async function loadDefaultDataset(): Promise<void> {
@@ -708,7 +828,7 @@ export const useDevice = defineStore('device', () => {
     try {
       const res = await fetch(`${base}data/waypoints_GP39.gpx`)
       if (!res.ok) throw new Error(String(res.status))
-      importGpx(await res.text(), 'replace')
+      importGpx(await res.text(), 'replace', 'waypoints_GP39.gpx')
     } catch (e) {
       importWarnings.value = [`Jeu de données par défaut introuvable : ${(e as Error).message}`]
     }
@@ -716,10 +836,11 @@ export const useDevice = defineStore('device', () => {
 
   // ---------------------------------------------------------------- persistance
   async function hydrate(): Promise<void> {
-    const [s, sm, w, r, t, d, mb, sh, c] = await Promise.all([
+    const [s, sm, w, lay, r, t, d, mb, sh, c] = await Promise.all([
       kvGet<Settings>(DB_KEYS.settings),
       kvGet<SimConfig>(DB_KEYS.sim),
       kvGet<Waypoint[]>(DB_KEYS.waypoints),
+      kvGet<Layer[]>(DB_KEYS.layers),
       kvGet<Route[]>(DB_KEYS.routes),
       kvGet<TrackPoint[]>(DB_KEYS.track),
       kvGet<Destination | null>(DB_KEYS.dest),
@@ -730,11 +851,16 @@ export const useDevice = defineStore('device', () => {
     if (s) Object.assign(settings, { ...defaultSettings(), ...s })
     if (sm) Object.assign(sim, { ...defaultSim(), ...sm, demo: false })
     if (w && w.length) {
+      // données d'avant les calques : les waypoints sans calque vont dans « Appareil »
+      const n = normaliseLayers(w, lay ?? [])
+      layers.value = n.layers
       waypoints.value = w
       nextId = Math.max(0, ...w.map((x) => x.id)) + 1
       touchWaypoints()
     } else if (!w) {
       await loadDefaultDataset()
+    } else {
+      layers.value = normaliseLayers([], lay ?? []).layers
     }
     if (r) routes.value = r
     if (t) {
@@ -765,6 +891,7 @@ export const useDevice = defineStore('device', () => {
       ),
     800,
   )
+  const saveLayers = debounce(() => void kvSet(DB_KEYS.layers, JSON.parse(JSON.stringify(layers.value))), 600)
   const saveRoutes = debounce(() => void kvSet(DB_KEYS.routes, JSON.parse(JSON.stringify(routes.value))), 600)
   const saveTrack = debounce(
     () =>
@@ -790,7 +917,7 @@ export const useDevice = defineStore('device', () => {
 
   /** Enregistre immédiatement tout ce qui est en attente (onglet masqué ou fermé). */
   function flushPersistence(): void {
-    for (const f of [saveSettings, saveSim, saveWaypoints, saveRoutes, saveTrack, saveDest, saveShip]) f.flush()
+    for (const f of [saveSettings, saveSim, saveWaypoints, saveLayers, saveRoutes, saveTrack, saveDest, saveShip]) f.flush()
   }
 
   function startPersistence(): void {
@@ -801,6 +928,7 @@ export const useDevice = defineStore('device', () => {
     watch(settings, saveSettings, { deep: true })
     watch(sim, saveSim, { deep: true })
     watch(wptVersion, saveWaypoints)
+    watch(layers, saveLayers, { deep: true })
     watch(routes, saveRoutes, { deep: true })
     watch(trackVersion, saveTrack)
     watch([dest, mob], saveDest, { deep: true })
@@ -823,6 +951,7 @@ export const useDevice = defineStore('device', () => {
     ship.lon = DEFAULT_SHIP.lon
     ship.sog = 0
     waypoints.value = []
+    layers.value = []
     touchWaypoints()
     if (reloadDefault) await loadDefaultDataset()
   }
@@ -834,6 +963,7 @@ export const useDevice = defineStore('device', () => {
     ready,
     waypoints,
     wptVersion,
+    layers,
     routes,
     track,
     trackVersion,
@@ -853,6 +983,7 @@ export const useDevice = defineStore('device', () => {
     importWarnings,
     alarms,
     // dérivés
+    layerCounts,
     wptById,
     shipPos,
     destTarget,
@@ -867,7 +998,13 @@ export const useDevice = defineStore('device', () => {
     addWaypointAtShip,
     updateWaypoint,
     deleteWaypoint,
+    deleteWaypoints,
     deleteAllWaypoints,
+    addLayer,
+    renameLayer,
+    setLayerVisible,
+    deleteLayer,
+    moveWaypointsToLayer,
     isWaypointInUse,
     nextWaypointName,
     setQuickPoint,

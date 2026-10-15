@@ -29,25 +29,12 @@
           <b>{{ dev.waypoints.length }}</b> waypoints · <b>{{ dev.routes.length }}</b> routes · trace {{ dev.trackMemoryPct }} %
         </div>
         <div class="q-mt-sm column q-gutter-y-xs">
+          <q-btn color="primary" unelevated dense no-caps icon="edit_location_alt" label="Éditeur de waypoints…" @click="$emit('editor')" />
           <q-btn outline dense no-caps icon="upload_file" label="Charger un fichier GPX…" @click="loadFile" />
           <q-btn outline dense no-caps icon="download" label="Exporter GP39_WptRte.gpx" @click="exportFile" />
           <q-btn outline dense no-caps icon="restart_alt" label="Recharger waypoints_GP39.gpx" @click="reloadDefault" />
           <q-btn outline dense no-caps icon="category" label="Légende des symboles…" @click="showLegend = true" />
         </div>
-        <q-expansion-item
-          dense
-          dense-toggle
-          icon="merge_type"
-          label="Fusionner des fichiers GPX"
-          :caption="gpxSets.count ? `${gpxSets.count}/${MAX_GPX_SETS} chargés` : `jusqu’à ${MAX_GPX_SETS} fichiers`"
-          class="q-mt-sm rounded-borders bordered-card"
-        >
-          <q-card flat>
-            <q-card-section class="q-pt-sm">
-              <GpxMergePanel />
-            </q-card-section>
-          </q-card>
-        </q-expansion-item>
       </q-card-section>
     </q-card>
 
@@ -85,22 +72,18 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useDevice } from '@/stores/device'
-import { useGpxSets } from '@/stores/gpxSets'
 import { downloadTextFile } from '@/gp39/download'
 import { formatLat, formatLon } from '@/gp39/format'
-import { MAX_GPX_SETS } from '@/gp39/gpxSets'
 import { centerOnShip } from '@/gp39/ui/plotter'
 import { fileHooks } from '@/gp39/ui/menus'
-import GpxMergePanel from './GpxMergePanel.vue'
 import SymbolLegend from './SymbolLegend.vue'
 
-defineEmits<{ (e: 'position'): void }>()
+defineEmits<{ (e: 'position'): void; (e: 'editor'): void }>()
 
 const showLegend = ref(false)
 
 const $q = useQuasar()
 const dev = useDevice()
-const gpxSets = useGpxSets()
 const fileInput = ref<HTMLInputElement | null>(null)
 let pending: ((text: string, name: string) => void) | null = null
 
@@ -132,7 +115,7 @@ function promptImport(text: string, name: string): void {
     cancel: true,
     persistent: true,
   }).onOk((mode: 'replace' | 'merge') => {
-    const r = dev.importGpx(text, mode)
+    const r = dev.importGpx(text, mode, name)
     $q.notify({
       type: r.warnings.length ? 'warning' : 'positive',
       message: `${r.waypoints} waypoints, ${r.routes} routes importés`,

@@ -56,14 +56,22 @@ service worker exigent HTTPS (ou `localhost`).
   **Royaume-Uni et Irlande** : il n'existe pas de service libre de cartes marines (les cartes Admiralty du UKHO, également utilisées
   pour l'Irlande, sont payantes et sous licence) ; seuls les fonds OpenSeaMap et EMODnet couvrent ces eaux. Pour ajouter un fond
   (par exemple Admiralty sous licence) : `src/gp39/basemaps.ts` (et son domaine dans la CSP de `index.html`).
-- **Fusion de fichiers GPX** (panneau de commande, bloc « Données », « Fusionner des fichiers GPX ») : on charge jusqu'à **5 fichiers
-  GPX**, chacun à part (bouton ou glisser-déposer sur le panneau ; croix pour en retirer un) ; ils **ne modifient pas l'appareil** et
-  s'exportent **dans un seul fichier** dont on choisit le nom (`.gpx` ajouté, caractères interdits remplacés par `_` ; le GP-39, lui, ne relit que
-  `GP39_WptRte.gpx`). La fusion garde l'ordre des fichiers, renumérote les routes de 1 à n et respecte les limites du GP-39
-  (10 000 waypoints, 100 routes) en le signalant. « Supprimer les doublons entre fichiers » (coché par défaut) n'ajoute pas un waypoint
-  (même nom, position à 1 m près, symbole, couleur) ni une route déjà présents dans un fichier précédent ; les répétitions à
-  l'intérieur d'un même fichier sont conservées. Un point de route absent des `<wpt>` (fichier venu d'un autre logiciel) devient un
-  waypoint. Les traces `<trk>` ne sont pas lues. Les fichiers chargés ne sont gardés qu'en mémoire (perdus au rechargement de la page).
+- **Éditeur de waypoints** (panneau de commande, bloc « Données », bouton « Éditeur de waypoints… ») : fenêtre à carte (même choix de fond que
+  la fenêtre « Position », partagé) qui **modifie directement les waypoints de l'appareil** : ce qu'on crée, édite ou supprime se voit aussitôt sur le plotter.
+  - **Calques** : un calque par fichier GPX importé (« Importer des GPX… » ou glisser-déposer sur le panneau ; chargé en fusion, les
+    calques existants restent). Œil = afficher/masquer sur la carte de l'éditeur (le plotter de l'appareil n'est pas concerné), loupe = cadrer,
+    corbeille = supprimer le calque **et ses waypoints**, clic sur le nom = renommer. « Ignorer les doublons déjà présents » (coché par défaut) n'importe
+    pas un waypoint identique (nom, position à 1 m près, symbole, couleur) à un waypoint déjà chargé. Les waypoints créés sur l'appareil (MARK, MOB) et les
+    données d'avant les calques sont dans le calque « Appareil ». Les traces `<trk>` ne sont pas lues.
+  - **Modes** : _Déplacer_ (clic = sélectionner, Ctrl/Maj + clic = ajouter, **Maj + glisser = rectangle de sélection**), _Sélection_ (glisser = rectangle ;
+    Ctrl = ajouter à la sélection) et _Ajouter_ (un clic crée un waypoint dans le calque actif, repéré par le bouton rond de la liste). Échap quitte le mode puis
+    vide la sélection ; Suppr supprime la sélection.
+  - **Édition** : un seul waypoint sélectionné → formulaire (nom 8 car., commentaire 13 car., symbole, couleur, latitude/longitude, calque, affichage sur le
+    plotter) et repère orange à **glisser** pour le déplacer. Plusieurs sélectionnés → déplacer vers un calque, ou **supprimer** (confirmation).
+    Un waypoint non affiché sur le plotter (GP39Flag 0) est pâle sur la carte. La destination en cours ne peut pas être supprimée (règle du GP-39).
+  - **Export** : tous les waypoints de tous les calques (et les routes) dans **un seul fichier**, au nom modifiable (`.gpx` ajouté, caractères interdits
+    remplacés par `_` ; le GP-39, lui, ne relit que `GP39_WptRte.gpx`). « Seulement les calques affichés » limite l'export aux calques visibles (une route
+    n'est alors exportée que si tous ses points y sont). Le Quick Point n'est jamais exporté.
 - **Symboles** : le bouton « Légende des symboles… » affiche les règles `GP39Symbol` / `FECColor` appliquées, avec le nombre de
   waypoints de chaque code dans le fichier chargé. Sur la carte de la fenêtre « Position », les waypoints gardent leur pictogramme et
   leur couleur ; survoler un point affiche son nom, son commentaire et ses codes.
@@ -108,8 +116,8 @@ service worker exigent HTTPS (ou `localhost`).
 src/gp39/            domaine pur (testé) : géodésie, GPX, symboles, formats, simulation, persistance
 src/gp39/ui/         touches → vues (menus, éditeurs, plotter) ; menus.ts = arborescence du manuel
 src/stores/device.ts état de l'appareil (Pinia) : waypoints, routes, traces, navigation, alarmes, boucle 1 Hz
-src/stores/gpxSets.ts fichiers GPX chargés à part dans le bloc « Données » (fusion, export) ; logique pure : src/gp39/gpxSets.ts
-src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtre « Position », panneau de contrôle
+src/gp39/layers.ts   calques et outils de l'éditeur (rattachement, rectangle de sélection, doublons, contenu d'un export) ; gpxFile.ts : nom du fichier exporté
+src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtres « Position » et « Éditeur de waypoints », panneau de contrôle
 public/data/         waypoints_GP39.gpx (jeu de données chargé au premier lancement)
 ```
 

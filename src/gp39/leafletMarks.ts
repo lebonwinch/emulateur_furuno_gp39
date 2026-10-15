@@ -17,6 +17,15 @@ function markSize(zoom: number): number {
   return zoom >= 15 ? 22 : zoom >= 13 ? 18 : zoom >= 11 ? 14 : zoom >= 9 ? 11 : 9
 }
 
+export interface WaypointLayerOptions {
+  /** waypoints sélectionnés : entourés d'un anneau orange (éditeur) */
+  selected?: () => ReadonlySet<number>
+  /** dessine aussi les waypoints dont GP39Flag vaut 0 (pâles) : l'éditeur doit pouvoir les voir et les modifier */
+  showHidden?: boolean
+  /** HTML ajouté à l'info-bulle (ex. nom du calque) ; déjà échappé */
+  extra?: (w: Waypoint) => string
+}
+
 export class WaypointCanvasLayer extends L.Layer {
   private map: L.Map | null = null
   private canvas: HTMLCanvasElement | null = null
@@ -26,7 +35,10 @@ export class WaypointCanvasLayer extends L.Layer {
   private padX = 0
   private padY = 0
 
-  constructor(private readonly source: () => readonly Waypoint[]) {
+  constructor(
+    private readonly source: () => readonly Waypoint[],
+    private readonly cfg: WaypointLayerOptions = {},
+  ) {
     super()
   }
 
@@ -84,16 +96,47 @@ export class WaypointCanvasLayer extends L.Layer {
     const sizePx = markSize(map.getZoom())
     const sprites: (HTMLCanvasElement | undefined)[] = []
     const placed: Placed[] = []
+    const selected = this.cfg.selected?.()
     for (const wpt of this.source()) {
-      if (!wpt.display || !bounds.contains([wpt.lat, wpt.lon])) continue
+      if ((!wpt.display && !this.cfg.showHidden) || !bounds.contains([wpt.lat, wpt.lon])) continue
       const p = map.latLngToContainerPoint([wpt.lat, wpt.lon])
       const x = p.x + this.padX
       const y = p.y + this.padY
       const k = wpt.symbol * 7 + wpt.color
+      // un waypoint non affiché sur le plotter (GP39Flag 0) est pâle dans l'éditeur
+      ctx.globalAlpha = wpt.display ? 1 : 0.4
       drawSprite(ctx, (sprites[k] ??= markSprite(wpt.symbol, wpt.color, sizePx * dpr, true)), x, y, dpr)
+      ctx.globalAlpha = 1
+      if (selected?.has(wpt.id)) {
+        const r = sizePx * 0.9 + 3
+        ctx.beginPath()
+        ctx.arc(x, y, r + 1.5, 0, Math.PI * 2)
+        ctx.lineWidth = 4.5
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(x, y, r + 1.5, 0, Math.PI * 2)
+        ctx.lineWidth = 2.5
+        ctx.strokeStyle = '#ff6d00'
+        ctx.stroke()
+      }
       placed.push({ x: p.x, y: p.y, w: wpt })
     }
     this.placed = placed
+  }
+
+  /** Waypoint dessiné le plus proche d'un point de la carte (px du conteneur), à `tolerance` px au plus. */
+  pick(point: L.Point, tolerance = 10): Waypoint | null {
+    let best: Placed | null = null
+    let bestD = (tolerance + 1) * (tolerance + 1)
+    for (const p of this.placed) {
+      const d = (p.x - point.x) ** 2 + (p.y - point.y) ** 2
+      if (d <= bestD) {
+        bestD = d
+        best = p
+      }
+    }
+    return best?.w ?? null
   }
 
   private hideTip = (): void => {
@@ -117,7 +160,7 @@ export class WaypointCanvasLayer extends L.Layer {
     }
     if (!best) return this.hideTip()
     const ll = L.latLng(best.w.lat, best.w.lon)
-    const html = waypointTooltip(best.w)
+    const html = waypointTooltip(best.w) + (this.cfg.extra?.(best.w) ?? '')
     if (this.tip) this.tip.setLatLng(ll).setContent(html)
     else {
       // position et contenu doivent être fixés AVANT l'ajout à la carte (Leaflet calcule la position à l'ajout)

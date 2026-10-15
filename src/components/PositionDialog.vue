@@ -92,22 +92,14 @@
 
             <q-separator />
 
-            <div>
-              <div class="text-overline">Carte</div>
-              <q-option-group v-model="baseMap" type="radio" dense :options="baseOptions" />
-              <div class="text-caption text-grey-7 q-mt-xs">{{ baseHint }}</div>
+            <BaseMapPicker />
 
-              <div class="text-overline q-mt-sm">Couches Shom (données libres)</div>
-              <q-option-group v-model="shomLayers" type="checkbox" dense :options="shomOptions" />
-              <q-toggle v-model="showWpts" label="Afficher les waypoints" class="q-mt-sm" />
+            <div>
+              <q-toggle v-model="showWpts" label="Afficher les waypoints" />
               <q-toggle v-model="follow" label="La carte suit le bateau" />
               <div class="row q-gutter-sm q-mt-sm">
                 <q-btn dense no-caps outline icon="center_focus_strong" label="Centrer" @click="centerMap" />
                 <q-btn dense no-caps outline icon="fit_screen" label="Tous les waypoints" @click="fitWaypoints" />
-              </div>
-              <div class="text-caption text-grey-7 q-mt-sm">
-                Les fonds viennent de services en ligne (connexion nécessaire) ; leurs sources s’affichent en bas à droite de la carte. Les
-                cartes marines Shom ne sont pas destinées à la navigation.
               </div>
             </div>
           </div>
@@ -123,19 +115,10 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useDevice } from '@/stores/device'
 import { WaypointCanvasLayer } from '@/gp39/leafletMarks'
-import {
-  BASE_OPTIONS,
-  DEFAULT_BASE,
-  SHOM_OVERLAYS,
-  baseLayers,
-  baseMinZoom,
-  isBaseId,
-  parseShomSelection,
-  shomOverlaySpec,
-  type BaseId,
-} from '@/gp39/basemaps'
 import { formatLat, formatLon } from '@/gp39/format'
 import { centerOnShip } from '@/gp39/ui/plotter'
+import BaseMapPicker from './BaseMapPicker.vue'
+import { readPref, useBaseMap, writePref } from './useBaseMap'
 
 const open = defineModel<boolean>({ default: false })
 const dev = useDevice()
@@ -161,63 +144,21 @@ const mapEl = ref<HTMLElement | null>(null)
 let map: L.Map | null = null
 let boat: L.Marker | null = null
 let wptLayer: WaypointCanvasLayer | null = null
-let tileLayers: L.TileLayer[] = []
 let dragging = false
 
 const latInput = ref<number>(dev.ship.lat)
 const lonInput = ref<number>(dev.ship.lon)
 const dmText = computed(() => `${formatLat(dev.ship.lat)}  ${formatLon(dev.ship.lon)}`)
 
-const readPref = (k: string, d: string): string => {
-  try {
-    return localStorage.getItem(k) ?? d
-  } catch {
-    return d
-  }
-}
-const storedBase = readPref('gp39.basemap', DEFAULT_BASE)
-const baseMap = ref<BaseId>(isBaseId(storedBase) ? storedBase : DEFAULT_BASE)
-const shomLayers = ref<string[]>(parseShomSelection(readPref('gp39.shomlayers', '[]')))
-const baseOptions = BASE_OPTIONS.map((o) => ({ label: o.label, value: o.id }))
-const shomOptions = SHOM_OVERLAYS.map((o) => ({ label: o.label, value: o.id }))
-const baseHint = computed(() => BASE_OPTIONS.find((o) => o.id === baseMap.value)?.hint ?? '')
+// fond de carte : choix partagé avec l'éditeur de waypoints
+const { applyBaseMap, releaseBaseMap } = useBaseMap(() => map)
 const showWpts = ref(readPref('gp39.showwpts', '1') === '1')
 const follow = ref(readPref('gp39.follow', '1') === '1')
-watch(baseMap, (v) => {
-  try {
-    localStorage.setItem('gp39.basemap', v)
-  } catch {
-    /* stockage indisponible */
-  }
-  applyBaseMap()
-})
-watch(
-  shomLayers,
-  (v) => {
-    try {
-      localStorage.setItem('gp39.shomlayers', JSON.stringify(v))
-    } catch {
-      /* stockage indisponible */
-    }
-    applyBaseMap()
-  },
-  { deep: true },
-)
 watch(showWpts, (v) => {
-  try {
-    localStorage.setItem('gp39.showwpts', v ? '1' : '0')
-  } catch {
-    /* stockage indisponible */
-  }
+  writePref('gp39.showwpts', v ? '1' : '0')
   refreshWaypoints()
 })
-watch(follow, (v) => {
-  try {
-    localStorage.setItem('gp39.follow', v ? '1' : '0')
-  } catch {
-    /* stockage indisponible */
-  }
-})
+watch(follow, (v) => writePref('gp39.follow', v ? '1' : '0'))
 
 function boatIcon(cog: number): L.DivIcon {
   return L.divIcon({
@@ -259,31 +200,6 @@ function onShow(): void {
     refreshWaypoints()
     setTimeout(() => map?.invalidateSize(), 150)
   })
-}
-
-/** Empile le fond choisi puis les couches Shom cochées (dessous : tuiles ; dessus : waypoints et bateau). */
-function applyBaseMap(): void {
-  if (!map) return
-  for (const l of tileLayers) map.removeLayer(l)
-  tileLayers = []
-  const specs = [...baseLayers(baseMap.value), ...SHOM_OVERLAYS.filter((o) => shomLayers.value.includes(o.id)).map(shomOverlaySpec)]
-  specs.forEach((sp, i) => {
-    const options = {
-      attribution: sp.attribution,
-      maxZoom: sp.maxZoom,
-      ...(sp.minZoom !== undefined ? { minZoom: sp.minZoom } : {}),
-      ...(sp.maxNativeZoom !== undefined ? { maxNativeZoom: sp.maxNativeZoom } : {}),
-      crossOrigin: true,
-      zIndex: i + 1,
-    }
-    const layer = sp.wms
-      ? L.tileLayer.wms(sp.url, { ...options, layers: sp.wms.layers, format: 'image/png', transparent: true, version: '1.3.0' })
-      : L.tileLayer(sp.url, options)
-    layer.addTo(map!)
-    tileLayers.push(layer)
-  })
-  // la carte Shom n'existe pas sous le zoom 6 : Leaflet remonte alors le zoom courant
-  map.setMinZoom(baseMinZoom(baseMap.value))
 }
 
 function refreshWaypoints(): void {
@@ -349,7 +265,7 @@ function onHide(): void {
   map = null
   boat = null
   wptLayer = null
-  tileLayers = []
+  releaseBaseMap()
 }
 onBeforeUnmount(onHide)
 </script>
