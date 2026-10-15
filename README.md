@@ -42,9 +42,28 @@ service worker exigent HTTPS (ou `localhost`).
 
 - **Plotter** : le clic place le curseur, le glisser déplace la carte. ENT sur un waypoint ouvre _Goto / Move / Edit / Delete_,
   GO TO avec le curseur crée un _Quick Point_, MARK enregistre un waypoint à la position du bateau, MARK maintenu enregistre un MOB.
-- **Position du bateau** (bouton « Position du bateau… ») : fenêtre avec carte OpenStreetMap (zoom molette ou +/−). Le bateau se
+- **Position du bateau** (bouton « Position du bateau… ») : fenêtre avec carte (fond au choix, voir « Fonds de carte » ; zoom molette ou +/−). Le bateau se
   **déplace en le faisant glisser** ; on peut aussi saisir une position, choisir un port, activer un déplacement simulé
   (vitesse, cap, route circulaire), forcer l'état du fix GPS ou activer le mode Demo (« SIM »).
+- **Fonds de carte** (fenêtre « Position ») : **OpenStreetMap**, **OpenSeaMap** (OpenStreetMap + marques nautiques), **Shom — cartes
+  marines** (Carte littorale Shom/IGN), **Bathymétrie EMODnet** (relief, profondeurs et isobathes des mers d'Europe + marques
+  OpenSeaMap) ou **sans fond**. Des couches Shom libres (balisage, épaves et obstructions, informations portuaires, dispositifs de
+  séparation du trafic) se superposent à n'importe quel fond. Le choix est mémorisé. Aucun de ces services ne demande de clé ; chacun
+  affiche sa source en bas à droite de la carte. Sources : `tile.openstreetmap.org`, `tiles.openseamap.org/seamark`,
+  `data.geopf.fr/wmts` (couche `GEOGRAPHICALGRIDSYSTEMS.COASTALMAPS`, zooms 6 à 16 puis agrandissement, littoral français et
+  outre-mer), `services.data.shom.fr/INSPIRE/wmts`, `ows.emodnet-bathymetry.eu/wms` (couches `emodnet:mean_atlas_land` et
+  `emodnet:contours`, CC BY 4.0). Ces cartes ne sont **pas destinées à la navigation**.
+  **Royaume-Uni et Irlande** : il n'existe pas de service libre de cartes marines (les cartes Admiralty du UKHO, également utilisées
+  pour l'Irlande, sont payantes et sous licence) ; seuls les fonds OpenSeaMap et EMODnet couvrent ces eaux. Pour ajouter un fond
+  (par exemple Admiralty sous licence) : `src/gp39/basemaps.ts` (et son domaine dans la CSP de `index.html`).
+- **Fusion de fichiers GPX** (panneau de commande, bloc « Données », « Fusionner des fichiers GPX ») : on charge jusqu'à **5 fichiers
+  GPX**, chacun à part (bouton ou glisser-déposer sur le panneau ; croix pour en retirer un) ; ils **ne modifient pas l'appareil** et
+  s'exportent **dans un seul fichier** dont on choisit le nom (`.gpx` ajouté, caractères interdits remplacés par `_` ; le GP-39, lui, ne relit que
+  `GP39_WptRte.gpx`). La fusion garde l'ordre des fichiers, renumérote les routes de 1 à n et respecte les limites du GP-39
+  (10 000 waypoints, 100 routes) en le signalant. « Supprimer les doublons entre fichiers » (coché par défaut) n'ajoute pas un waypoint
+  (même nom, position à 1 m près, symbole, couleur) ni une route déjà présents dans un fichier précédent ; les répétitions à
+  l'intérieur d'un même fichier sont conservées. Un point de route absent des `<wpt>` (fichier venu d'un autre logiciel) devient un
+  waypoint. Les traces `<trk>` ne sont pas lues. Les fichiers chargés ne sont gardés qu'en mémoire (perdus au rechargement de la page).
 - **Symboles** : le bouton « Légende des symboles… » affiche les règles `GP39Symbol` / `FECColor` appliquées, avec le nombre de
   waypoints de chaque code dans le fichier chargé. Sur la carte de la fenêtre « Position », les waypoints gardent leur pictogramme et
   leur couleur ; survoler un point affiche son nom, son commentaire et ses codes.
@@ -89,6 +108,7 @@ service worker exigent HTTPS (ou `localhost`).
 src/gp39/            domaine pur (testé) : géodésie, GPX, symboles, formats, simulation, persistance
 src/gp39/ui/         touches → vues (menus, éditeurs, plotter) ; menus.ts = arborescence du manuel
 src/stores/device.ts état de l'appareil (Pinia) : waypoints, routes, traces, navigation, alarmes, boucle 1 Hz
+src/stores/gpxSets.ts fichiers GPX chargés à part dans le bloc « Données » (fusion, export) ; logique pure : src/gp39/gpxSets.ts
 src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtre « Position », panneau de contrôle
 public/data/         waypoints_GP39.gpx (jeu de données chargé au premier lancement)
 ```

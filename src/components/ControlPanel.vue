@@ -34,6 +34,20 @@
           <q-btn outline dense no-caps icon="restart_alt" label="Recharger waypoints_GP39.gpx" @click="reloadDefault" />
           <q-btn outline dense no-caps icon="category" label="Légende des symboles…" @click="showLegend = true" />
         </div>
+        <q-expansion-item
+          dense
+          dense-toggle
+          icon="merge_type"
+          label="Fusionner des fichiers GPX"
+          :caption="gpxSets.count ? `${gpxSets.count}/${MAX_GPX_SETS} chargés` : `jusqu’à ${MAX_GPX_SETS} fichiers`"
+          class="q-mt-sm rounded-borders bordered-card"
+        >
+          <q-card flat>
+            <q-card-section class="q-pt-sm">
+              <GpxMergePanel />
+            </q-card-section>
+          </q-card>
+        </q-expansion-item>
       </q-card-section>
     </q-card>
 
@@ -71,9 +85,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useDevice } from '@/stores/device'
+import { useGpxSets } from '@/stores/gpxSets'
+import { downloadTextFile } from '@/gp39/download'
 import { formatLat, formatLon } from '@/gp39/format'
+import { MAX_GPX_SETS } from '@/gp39/gpxSets'
 import { centerOnShip } from '@/gp39/ui/plotter'
 import { fileHooks } from '@/gp39/ui/menus'
+import GpxMergePanel from './GpxMergePanel.vue'
 import SymbolLegend from './SymbolLegend.vue'
 
 defineEmits<{ (e: 'position'): void }>()
@@ -82,25 +100,15 @@ const showLegend = ref(false)
 
 const $q = useQuasar()
 const dev = useDevice()
+const gpxSets = useGpxSets()
 const fileInput = ref<HTMLInputElement | null>(null)
 let pending: ((text: string, name: string) => void) | null = null
 
 const lat = computed(() => formatLat(dev.ship.lat, dev.settings.posFormat))
 const lon = computed(() => formatLon(dev.ship.lon, dev.settings.posFormat))
 
-function download(name: string, content: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type: 'application/gpx+xml' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 2000)
-}
-
 function exportFile(): void {
-  download('GP39_WptRte.gpx', dev.exportGpx())
+  downloadTextFile('GP39_WptRte.gpx', dev.exportGpx())
   $q.notify({
     type: 'positive',
     message: `GP39_WptRte.gpx exporté (${dev.waypoints.length} waypoints, ${dev.routes.length} routes)`,
@@ -177,7 +185,7 @@ function reloadDefault(): void {
 onMounted(() => {
   window.addEventListener('dragover', onDragOver)
   window.addEventListener('drop', onDrop)
-  fileHooks.download = download
+  fileHooks.download = downloadTextFile
   // « Load WPT/RTE <- USB » depuis le menu de l'appareil : ouvre directement le sélecteur de fichier
   fileHooks.pickFile = (cb) => {
     pending = cb

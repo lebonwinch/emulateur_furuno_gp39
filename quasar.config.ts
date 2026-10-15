@@ -176,7 +176,21 @@ export default defineConfig((/* ctx */) => {
         cfg.clientsClaim = true
         cfg.globPatterns = ['**/*.{js,css,html,png,svg,jpg,gif,json,woff,woff2,ico,webp,gpx}']
         // fond de carte OpenStreetMap de la fenêtre « Position » : mis en cache à l'usage
+        // tuiles des fonds de carte : mises en cache à l'usage (les cartes marines sont lourdes, ~150 Ko la tuile : plafond bas)
+        const tiles = (cacheName: string, urlPattern: RegExp, maxEntries: number) => ({
+          urlPattern,
+          handler: 'CacheFirst' as const,
+          options: {
+            cacheName,
+            expiration: { maxEntries, maxAgeSeconds: 7 * 24 * 3600 },
+            cacheableResponse: { statuses: [0, 200] },
+          },
+        })
         cfg.runtimeCaching = [
+          tiles('openseamap-tiles', /^https:\/\/tiles\.openseamap\.org\//, 400),
+          tiles('shom-coastal-tiles', /^https:\/\/data\.geopf\.fr\/wmts\?.*COASTALMAPS/, 200),
+          tiles('shom-open-tiles', /^https:\/\/services\.data\.shom\.fr\/INSPIRE\/wmts\?/, 300),
+          tiles('emodnet-tiles', /^https:\/\/ows\.emodnet-bathymetry\.eu\/wms\?/, 300),
           {
             urlPattern: /^https:\/\/(?:[a-c]\.)?tile\.openstreetmap\.org\//,
             handler: 'CacheFirst',

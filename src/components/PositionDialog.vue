@@ -94,24 +94,21 @@
 
             <div>
               <div class="text-overline">Carte</div>
-              <q-btn-toggle
-                v-model="baseMap"
-                no-caps
-                dense
-                unelevated
-                toggle-color="primary"
-                :options="[
-                  { label: 'OpenStreetMap', value: 'osm' },
-                  { label: 'Sans fond', value: 'none' },
-                ]"
-              />
+              <q-option-group v-model="baseMap" type="radio" dense :options="baseOptions" />
+              <div class="text-caption text-grey-7 q-mt-xs">{{ baseHint }}</div>
+
+              <div class="text-overline q-mt-sm">Couches Shom (données libres)</div>
+              <q-option-group v-model="shomLayers" type="checkbox" dense :options="shomOptions" />
               <q-toggle v-model="showWpts" label="Afficher les waypoints" class="q-mt-sm" />
               <q-toggle v-model="follow" label="La carte suit le bateau" />
               <div class="row q-gutter-sm q-mt-sm">
                 <q-btn dense no-caps outline icon="center_focus_strong" label="Centrer" @click="centerMap" />
                 <q-btn dense no-caps outline icon="fit_screen" label="Tous les waypoints" @click="fitWaypoints" />
               </div>
-              <div class="text-caption text-grey-7 q-mt-sm">Fond de carte © contributeurs OpenStreetMap (nécessite une connexion).</div>
+              <div class="text-caption text-grey-7 q-mt-sm">
+                Les fonds viennent de services en ligne (connexion nécessaire) ; leurs sources s’affichent en bas à droite de la carte. Les
+                cartes marines Shom ne sont pas destinées à la navigation.
+              </div>
             </div>
           </div>
         </q-scroll-area>
@@ -126,6 +123,17 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useDevice } from '@/stores/device'
 import { WaypointCanvasLayer } from '@/gp39/leafletMarks'
+import {
+  BASE_OPTIONS,
+  DEFAULT_BASE,
+  SHOM_OVERLAYS,
+  baseLayers,
+  baseMinZoom,
+  isBaseId,
+  parseShomSelection,
+  shomOverlaySpec,
+  type BaseId,
+} from '@/gp39/basemaps'
 import { formatLat, formatLon } from '@/gp39/format'
 import { centerOnShip } from '@/gp39/ui/plotter'
 
@@ -153,7 +161,7 @@ const mapEl = ref<HTMLElement | null>(null)
 let map: L.Map | null = null
 let boat: L.Marker | null = null
 let wptLayer: WaypointCanvasLayer | null = null
-let tiles: L.TileLayer | null = null
+let tileLayers: L.TileLayer[] = []
 let dragging = false
 
 const latInput = ref<number>(dev.ship.lat)
@@ -167,7 +175,12 @@ const readPref = (k: string, d: string): string => {
     return d
   }
 }
-const baseMap = ref<'osm' | 'none'>(readPref('gp39.basemap', 'osm') as 'osm' | 'none')
+const storedBase = readPref('gp39.basemap', DEFAULT_BASE)
+const baseMap = ref<BaseId>(isBaseId(storedBase) ? storedBase : DEFAULT_BASE)
+const shomLayers = ref<string[]>(parseShomSelection(readPref('gp39.shomlayers', '[]')))
+const baseOptions = BASE_OPTIONS.map((o) => ({ label: o.label, value: o.id }))
+const shomOptions = SHOM_OVERLAYS.map((o) => ({ label: o.label, value: o.id }))
+const baseHint = computed(() => BASE_OPTIONS.find((o) => o.id === baseMap.value)?.hint ?? '')
 const showWpts = ref(readPref('gp39.showwpts', '1') === '1')
 const follow = ref(readPref('gp39.follow', '1') === '1')
 watch(baseMap, (v) => {
@@ -178,6 +191,18 @@ watch(baseMap, (v) => {
   }
   applyBaseMap()
 })
+watch(
+  shomLayers,
+  (v) => {
+    try {
+      localStorage.setItem('gp39.shomlayers', JSON.stringify(v))
+    } catch {
+      /* stockage indisponible */
+    }
+    applyBaseMap()
+  },
+  { deep: true },
+)
 watch(showWpts, (v) => {
   try {
     localStorage.setItem('gp39.showwpts', v ? '1' : '0')
@@ -236,19 +261,29 @@ function onShow(): void {
   })
 }
 
+/** Empile le fond choisi puis les couches Shom cochées (dessous : tuiles ; dessus : waypoints et bateau). */
 function applyBaseMap(): void {
   if (!map) return
-  if (tiles) {
-    map.removeLayer(tiles)
-    tiles = null
-  }
-  if (baseMap.value === 'osm') {
-    tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap',
+  for (const l of tileLayers) map.removeLayer(l)
+  tileLayers = []
+  const specs = [...baseLayers(baseMap.value), ...SHOM_OVERLAYS.filter((o) => shomLayers.value.includes(o.id)).map(shomOverlaySpec)]
+  specs.forEach((sp, i) => {
+    const options = {
+      attribution: sp.attribution,
+      maxZoom: sp.maxZoom,
+      ...(sp.minZoom !== undefined ? { minZoom: sp.minZoom } : {}),
+      ...(sp.maxNativeZoom !== undefined ? { maxNativeZoom: sp.maxNativeZoom } : {}),
       crossOrigin: true,
-    }).addTo(map)
-  }
+      zIndex: i + 1,
+    }
+    const layer = sp.wms
+      ? L.tileLayer.wms(sp.url, { ...options, layers: sp.wms.layers, format: 'image/png', transparent: true, version: '1.3.0' })
+      : L.tileLayer(sp.url, options)
+    layer.addTo(map!)
+    tileLayers.push(layer)
+  })
+  // la carte Shom n'existe pas sous le zoom 6 : Leaflet remonte alors le zoom courant
+  map.setMinZoom(baseMinZoom(baseMap.value))
 }
 
 function refreshWaypoints(): void {
@@ -314,7 +349,7 @@ function onHide(): void {
   map = null
   boat = null
   wptLayer = null
-  tiles = null
+  tileLayers = []
 }
 onBeforeUnmount(onHide)
 </script>
