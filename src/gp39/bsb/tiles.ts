@@ -59,6 +59,15 @@ const K_LIMIT = 4
 /** Nombre maximal de cartes superposées pour une tuile (la tuile s'arrête dès qu'elle est entièrement couverte). */
 export const MAX_CHARTS_PER_TILE = 8
 
+/** Rang d'une carte selon son facteur k (voir `selectCharts`) : 0 lisible, 1 un peu trop détaillée, 2 agrandie, 3 beaucoup trop détaillée. */
+export const chartTier = (k: number): number => (k >= 0.5 && k <= K_COMFORT ? 0 : k > K_COMFORT && k <= K_LIMIT ? 1 : k < 0.5 ? 2 : 3)
+
+/** Rang de la carte la plus prioritaire d'une tuile (voir `chartTier`), ou undefined sans carte. */
+export function bestTier(chosen: readonly ChartInfo[], z: number, box: TileBox): number | undefined {
+  const first = chosen[0]
+  return first ? chartTier(metersPerTilePixel(z, (box.north + box.south) / 2) / first.metersPerPixel) : undefined
+}
+
 /**
  * Cartes à dessiner pour une tuile, de la plus prioritaire à la moins prioritaire.
  * `k` = mètres par pixel de tuile / mètres par pixel de la carte : 1 = pixels de la carte affichés tels quels, 2 = un pixel sur
@@ -73,10 +82,9 @@ export function selectCharts(charts: readonly ChartInfo[], z: number, box: TileB
   const lat = (box.north + box.south) / 2
   const mpp = metersPerTilePixel(z, lat)
   const scored = charts.filter((c) => intersects(c.bbox, box)).map((c) => ({ c, k: mpp / c.metersPerPixel }))
-  const tier = (k: number): number => (k >= 0.5 && k <= K_COMFORT ? 0 : k > K_COMFORT && k <= K_LIMIT ? 1 : k < 0.5 ? 2 : 3)
   scored.sort((a, b) => {
-    const ta = tier(a.k)
-    const tb = tier(b.k)
+    const ta = chartTier(a.k)
+    const tb = chartTier(b.k)
     if (ta !== tb) return ta - tb
     // tiers 0 et 2 : k décroissant (le plus détaillé d'abord) ; tiers 1 et 3 : k croissant
     return ta === 0 || ta === 2 ? b.k - a.k : a.k - b.k

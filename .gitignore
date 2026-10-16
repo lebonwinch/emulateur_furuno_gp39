@@ -30,3 +30,8 @@ yarn-error.log*
 *.KAP
 *.bsb
 *.BSB
+
+# cartes marines CM93 (C-MAP) et copies temporaires de test : sous licence, ne jamais les versionner ni les publier
+/CM93*/
+/public/__cm93test__/
+/public/__bsbtest__/

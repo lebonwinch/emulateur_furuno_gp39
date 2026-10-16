@@ -16,6 +16,8 @@ export interface TileResult {
   pixels: Uint32Array | null
   /** cartes qui ont réellement dessiné */
   used: string[]
+  /** rang de la carte la plus prioritaire (0 = lisible … 3 = beaucoup trop détaillée), pour départager avec une autre source */
+  best?: number
 }
 
 /** Cartes ouvertes gardées en mémoire (modèle de calage + table de lignes : ~40 Ko chacune) ; les plus anciennes sont oubliées. */

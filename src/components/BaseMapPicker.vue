@@ -3,8 +3,8 @@
     <div class="text-overline">Carte</div>
     <q-option-group v-model="baseMap" type="radio" dense :options="baseOptions" />
     <div class="text-caption text-grey-7 q-mt-xs">{{ baseHint }}</div>
-    <!-- fond « cartes BSB » : choix du dossier, état de l'analyse -->
-    <BsbFolderPanel v-if="baseMap === 'bsb'" />
+    <!-- fond « cartes marines » : choix du dossier, formats reconnus, état de l'analyse -->
+    <ChartsFolderPanel v-if="baseMap === 'charts'" />
 
     <div class="text-overline q-mt-sm">Couches Shom (données libres)</div>
     <q-option-group v-model="shomLayers" type="checkbox" dense :options="shomOptions" />
@@ -18,7 +18,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { BASE_OPTIONS, SHOM_OVERLAYS } from '@/gp39/basemaps'
-import BsbFolderPanel from './BsbFolderPanel.vue'
+import ChartsFolderPanel from './ChartsFolderPanel.vue'
 import { baseMap, shomLayers } from './useBaseMap'
 
 const baseOptions = BASE_OPTIONS.map((o) => ({ label: o.label, value: o.id }))

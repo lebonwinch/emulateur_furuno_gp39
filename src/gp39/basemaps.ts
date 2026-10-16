@@ -11,7 +11,7 @@
 //    (relief + profondeurs) et `emodnet:contours` (isobathes) ; couvre les mers d'Europe, dont le Royaume-Uni et l'Irlande.
 //    Ce n'est PAS une carte marine : les cartes Admiralty (UKHO, Royaume-Uni et Irlande) sont payantes, sans service de tuiles libre.
 
-export type BaseId = 'osm' | 'openseamap' | 'shom' | 'emodnet' | 'bsb' | 'none'
+export type BaseId = 'osm' | 'openseamap' | 'shom' | 'emodnet' | 'charts' | 'none'
 
 export interface TileSpec {
   /** identifiant stable (clé de cache, préférences) */
@@ -50,15 +50,19 @@ export const BASE_OPTIONS: BaseOption[] = [
     hint: 'Relief, profondeurs et isobathes EMODnet + marques OpenSeaMap : mers d’Europe, dont Royaume-Uni et Irlande. Ce n’est pas une carte marine (pas de sondes ni de dangers) ; pour naviguer, utiliser les cartes Admiralty officielles.',
   },
   {
-    id: 'bsb',
-    label: 'Cartes BSB (dossier local)',
-    hint: 'Vos cartes marines raster .kap (SHOM, NOAA…), lues sur place dans le dossier choisi : la carte la plus détaillée encore lisible s’affiche selon le zoom et la zone, comme dans OpenCPN. Non destinées à la navigation.',
+    id: 'charts',
+    label: 'Cartes marines (dossier local)',
+    hint: 'Vos cartes marines, lues sur place dans le dossier choisi : le format est reconnu automatiquement (BSB/KAP raster, CM93 vectoriel). La carte la plus détaillée encore lisible s’affiche selon le zoom et la zone, comme dans OpenCPN. Non destinées à la navigation.',
   },
   { id: 'none', label: 'Sans fond', hint: 'Seulement les waypoints.' },
 ]
 
-/** Zoom minimal quand le fond est une carte BSB (en dessous, la tuile couvrirait des milliers de milles : rien de lisible). */
-export const BSB_MIN_ZOOM = 5
+/**
+ * Zoom minimal quand le fond est un dossier de cartes : en dessous, une tuile de carte raster (BSB) couvrirait des milliers de milles
+ * et rien ne serait lisible ; les cartes vectorielles (CM93) ont des échelles de 1:20 000 000 à 1:7 500 et vont plus bas.
+ */
+export const CHARTS_MIN_ZOOM_RASTER = 5
+export const CHARTS_MIN_ZOOM_VECTOR = 3
 
 export const DEFAULT_BASE: BaseId = 'osm'
 
@@ -151,6 +155,12 @@ export function isBaseId(v: unknown): v is BaseId {
   return typeof v === 'string' && BASE_OPTIONS.some((o) => o.id === v)
 }
 
+/** Fond mémorisé → fond courant (l'ancien « Cartes BSB » est devenu « Cartes marines », tous formats) ; valeur inconnue : fond par défaut. */
+export function normaliseBase(v: unknown): BaseId {
+  if (v === 'bsb') return 'charts'
+  return isBaseId(v) ? v : DEFAULT_BASE
+}
+
 /** Couches de fond à empiler (de la plus basse à la plus haute) pour le choix `id`. */
 export function baseLayers(id: BaseId): TileSpec[] {
   switch (id) {
@@ -167,9 +177,12 @@ export function baseLayers(id: BaseId): TileSpec[] {
   }
 }
 
-/** Zoom minimal imposé à la carte par le fond choisi (la carte Shom n'existe pas en dessous de 6). */
-export function baseMinZoom(id: BaseId): number {
-  if (id === 'bsb') return BSB_MIN_ZOOM
+/**
+ * Zoom minimal imposé à la carte par le fond choisi (la carte Shom n'existe pas en dessous de 6). `vector` : le dossier de cartes
+ * contient des cartes vectorielles (CM93), qui descendent plus bas que les cartes raster.
+ */
+export function baseMinZoom(id: BaseId, vector = false): number {
+  if (id === 'charts') return vector ? CHARTS_MIN_ZOOM_VECTOR : CHARTS_MIN_ZOOM_RASTER
   return Math.max(
     2,
     ...baseLayers(id)

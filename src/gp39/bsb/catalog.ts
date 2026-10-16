@@ -10,6 +10,8 @@ export interface ChartFileRef {
   size: number
   lastModified: number
   getFile(): Promise<File>
+  /** de quoi relire le fichier depuis un Worker : le File lui-même, ou la poignée de fichier du navigateur (clonable) */
+  source?: Blob | { getFile(): Promise<File> }
 }
 
 /** Ce qu'on garde d'une carte entre deux sessions pour éviter de relire son en-tête. */

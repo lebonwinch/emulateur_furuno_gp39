@@ -4,18 +4,17 @@
 import { ref, watch } from 'vue'
 import L from 'leaflet'
 import {
-  BSB_MIN_ZOOM,
   DEFAULT_BASE,
   SHOM_OVERLAYS,
   baseLayers,
   baseMinZoom,
-  isBaseId,
+  normaliseBase,
   parseShomSelection,
   shomOverlaySpec,
   type BaseId,
 } from '@/gp39/basemaps'
-import { createBsbLayer } from '@/gp39/bsb/layer'
-import { bsb, getBsbEngine, restoreDirectory } from './useBsb'
+import { createChartsLayer } from '@/gp39/chartsLayer'
+import { charts, chartsMinZoom, getBsbEngine, getCm93Engine, restoreDirectory } from './useCharts'
 
 export function readPref(k: string, d: string): string {
   try {
@@ -35,7 +34,7 @@ export function writePref(k: string, v: string): void {
 
 const stored = readPref('gp39.basemap', DEFAULT_BASE)
 /** Fond choisi (partagé par toutes les fenêtres à carte). */
-export const baseMap = ref<BaseId>(isBaseId(stored) ? stored : DEFAULT_BASE)
+export const baseMap = ref<BaseId>(normaliseBase(stored))
 /** Couches Shom libres cochées (partagé). */
 export const shomLayers = ref<string[]>(parseShomSelection(readPref('gp39.shomlayers', '[]')))
 
@@ -54,10 +53,13 @@ export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => vo
     if (!map) return
     for (const l of tileLayers) map.removeLayer(l)
     tileLayers = []
-    // cartes BSB : un moteur de tuiles propre (lecture à la demande du dossier choisi), au-dessous de tout le reste
-    const bsbOn = baseMap.value === 'bsb' && bsb.phase === 'ready'
-    if (bsbOn) {
-      const layer = createBsbLayer(getBsbEngine(), { zIndex: 1, minZoom: BSB_MIN_ZOOM })
+    // cartes du dossier de l'utilisateur : un moteur de tuiles par format présent (lecture à la demande), au-dessous de tout le reste
+    const chartsOn = baseMap.value === 'charts' && charts.phase === 'ready'
+    if (chartsOn) {
+      const layer = createChartsLayer(
+        { bsb: charts.formats.includes('bsb') ? getBsbEngine() : null, cm93: charts.formats.includes('cm93') ? getCm93Engine() : null },
+        { zIndex: 1, minZoom: chartsMinZoom() },
+      )
       layer.addTo(map)
       tileLayers.push(layer)
     }
@@ -69,7 +71,7 @@ export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => vo
         ...(sp.minZoom !== undefined ? { minZoom: sp.minZoom } : {}),
         ...(sp.maxNativeZoom !== undefined ? { maxNativeZoom: sp.maxNativeZoom } : {}),
         crossOrigin: true,
-        zIndex: i + 1 + (bsbOn ? 1 : 0),
+        zIndex: i + 1 + (chartsOn ? 1 : 0),
       }
       const layer = sp.wms
         ? L.tileLayer.wms(sp.url, { ...options, layers: sp.wms.layers, format: 'image/png', transparent: true, version: '1.3.0' })
@@ -77,8 +79,8 @@ export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => vo
       layer.addTo(map)
       tileLayers.push(layer)
     })
-    // la carte Shom n'existe pas sous le zoom 6 : Leaflet remonte alors le zoom courant (BSB : seulement une fois les cartes chargées)
-    map.setMinZoom(baseMap.value === 'bsb' && !bsbOn ? 2 : baseMinZoom(baseMap.value))
+    // la carte Shom n'existe pas sous le zoom 6 : Leaflet remonte alors le zoom courant (cartes du dossier : seulement une fois chargées)
+    map.setMinZoom(baseMap.value === 'charts' ? (chartsOn ? chartsMinZoom() : 2) : baseMinZoom(baseMap.value))
   }
 
   /** À appeler quand la carte est détruite : les couches disparaissent avec elle. */
@@ -88,13 +90,13 @@ export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => vo
 
   watch(baseMap, applyBaseMap)
   watch(shomLayers, applyBaseMap, { deep: true })
-  // nouveau dossier de cartes BSB (ou dossier oublié) : la couche est recréée avec le nouveau catalogue
-  watch(() => bsb.version, applyBaseMap)
-  // fond BSB choisi : retrouve le dossier mémorisé (une seule fois, quelle que soit la fenêtre)
+  // nouveau dossier de cartes (ou dossier oublié) : la couche est recréée avec le nouveau catalogue
+  watch(() => charts.version, applyBaseMap)
+  // fond « cartes marines » choisi : retrouve le dossier mémorisé (une seule fois, quelle que soit la fenêtre)
   watch(
     baseMap,
     (v) => {
-      if (v === 'bsb') void restoreDirectory()
+      if (v === 'charts') void restoreDirectory()
     },
     { immediate: true },
   )

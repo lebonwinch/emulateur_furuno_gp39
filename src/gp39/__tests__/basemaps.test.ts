@@ -3,11 +3,13 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   BASE_OPTIONS,
-  BSB_MIN_ZOOM,
+  CHARTS_MIN_ZOOM_RASTER,
+  CHARTS_MIN_ZOOM_VECTOR,
   SHOM_OVERLAYS,
   baseLayers,
   baseMinZoom,
   isBaseId,
+  normaliseBase,
   parseShomSelection,
   shomOverlaySpec,
   type BaseId,
@@ -22,8 +24,8 @@ const allSpecs = (): TileSpec[] => [
 ]
 
 describe('fonds de carte', () => {
-  it('propose OpenStreetMap, OpenSeaMap, Shom, EMODnet, cartes BSB locales et « sans fond »', () => {
-    expect(BASE_OPTIONS.map((o) => o.id)).toEqual(['osm', 'openseamap', 'shom', 'emodnet', 'bsb', 'none'])
+  it('propose OpenStreetMap, OpenSeaMap, Shom, EMODnet, cartes marines locales et « sans fond »', () => {
+    expect(BASE_OPTIONS.map((o) => o.id)).toEqual(['osm', 'openseamap', 'shom', 'emodnet', 'charts', 'none'])
     expect(BASE_OPTIONS.every((o) => o.label && o.hint)).toBe(true)
   })
 
@@ -67,14 +69,26 @@ describe('fonds de carte', () => {
     expect(baseLayers('none')).toEqual([])
   })
 
-  it('cartes BSB : pas de serveur (couche fournie par le moteur local), zoom minimal 5, jamais de domaine à autoriser', () => {
-    expect(baseLayers('bsb')).toEqual([])
-    expect(baseMinZoom('bsb')).toBe(BSB_MIN_ZOOM)
-    expect(BSB_MIN_ZOOM).toBe(5)
-    const o = BASE_OPTIONS.find((x) => x.id === 'bsb')!
+  it('cartes marines locales : pas de serveur (couches fournies par les moteurs locaux), zoom minimal selon le format, jamais de domaine à autoriser', () => {
+    expect(baseLayers('charts')).toEqual([])
+    expect(baseMinZoom('charts')).toBe(CHARTS_MIN_ZOOM_RASTER)
+    expect(baseMinZoom('charts', true)).toBe(CHARTS_MIN_ZOOM_VECTOR)
+    expect(CHARTS_MIN_ZOOM_RASTER).toBe(5)
+    expect(CHARTS_MIN_ZOOM_VECTOR).toBeLessThan(CHARTS_MIN_ZOOM_RASTER)
+    const o = BASE_OPTIONS.find((x) => x.id === 'charts')!
     expect(o.label).toContain('dossier local')
+    expect(o.hint).toContain('BSB')
+    expect(o.hint).toContain('CM93')
     expect(o.hint).toContain('Non destinées à la navigation')
-    expect(isBaseId('bsb')).toBe(true)
+    expect(isBaseId('charts')).toBe(true)
+    expect(isBaseId('bsb')).toBe(false)
+  })
+
+  it('un fond mémorisé par une version précédente (« bsb ») devient « cartes marines » ; une valeur inconnue, le fond par défaut', () => {
+    expect(normaliseBase('bsb')).toBe('charts')
+    expect(normaliseBase('shom')).toBe('shom')
+    expect(normaliseBase('n’importe quoi')).toBe('osm')
+    expect(normaliseBase(null)).toBe('osm')
   })
 
   it('chaque URL est en https et contient les trois variables de tuile (XYZ ou WMTS)', () => {

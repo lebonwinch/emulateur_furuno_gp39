@@ -3,7 +3,8 @@
 
 import type { ChartFileRef } from './catalog'
 import { TileRenderer, type TileJob, type TileResult } from './runner'
-import { selectCharts, tileBox, type ChartInfo } from './tiles'
+import { TileQueue } from '../tileQueue'
+import { bestTier, selectCharts, tileBox, type ChartInfo } from './tiles'
 
 /** Exécute une tuile ; `capacity` = nombre de tuiles pouvant être fabriquées en même temps. */
 export interface TileRunner {
@@ -85,28 +86,22 @@ export function createRunner(): TileRunner {
   return new InlineRunner()
 }
 
-interface Task {
-  z: number
-  x: number
-  y: number
-  signal: AbortSignal | undefined
-  resolve: (r: TileResult) => void
-  reject: (e: unknown) => void
-}
-
 export class BsbEngine {
   private charts: ChartInfo[] = []
   private refs = new Map<string, ChartFileRef>()
   private files = new Map<string, Promise<File>>()
-  private pending: Task[] = []
-  private running = 0
+  private readonly queue: TileQueue<TileResult>
 
-  constructor(private readonly runner: TileRunner) {}
+  constructor(private readonly runner: TileRunner) {
+    this.queue = new TileQueue(
+      () => this.runner.capacity,
+      (z, x, y, signal) => this.execute(z, x, y, signal),
+    )
+  }
 
   /** Remplace le catalogue (nouveau dossier). Les tuiles en attente sont annulées. */
   setCatalog(refs: readonly ChartFileRef[], charts: readonly ChartInfo[]): void {
-    for (const t of this.pending) t.reject(new DOMException('Catalogue remplacé', 'AbortError'))
-    this.pending = []
+    this.queue.clear('Catalogue remplacé')
     this.refs = new Map(refs.map((r) => [r.id, r]))
     this.files.clear()
     this.charts = [...charts]
@@ -122,39 +117,7 @@ export class BsbEngine {
    * retirée de la file aussitôt et n'est jamais fabriquée ; une tuile déjà partie va au bout (son résultat est ignoré).
    */
   renderTile(z: number, x: number, y: number, signal?: AbortSignal): Promise<TileResult> {
-    return new Promise((resolve, reject) => {
-      if (signal?.aborted) return reject(new DOMException('Tuile annulée', 'AbortError'))
-      const task: Task = { z, x, y, signal, resolve, reject }
-      signal?.addEventListener(
-        'abort',
-        () => {
-          const i = this.pending.indexOf(task)
-          if (i < 0) return
-          this.pending.splice(i, 1)
-          reject(new DOMException('Tuile annulée', 'AbortError'))
-        },
-        { once: true },
-      )
-      this.pending.push(task)
-      this.pump()
-    })
-  }
-
-  private pump(): void {
-    while (this.running < this.runner.capacity && this.pending.length) {
-      const task = this.pending.pop()!
-      if (task.signal?.aborted) {
-        task.reject(new DOMException('Tuile annulée', 'AbortError'))
-        continue
-      }
-      this.running++
-      this.execute(task)
-        .then(task.resolve, task.reject)
-        .finally(() => {
-          this.running--
-          this.pump()
-        })
-    }
+    return this.queue.request(z, x, y, signal)
   }
 
   private fileOf(id: string): Promise<File> {
@@ -168,12 +131,15 @@ export class BsbEngine {
     return p
   }
 
-  private async execute(t: Task): Promise<TileResult> {
-    const chosen = selectCharts(this.charts, t.z, tileBox(t.z, t.x, t.y))
+  private async execute(z: number, x: number, y: number, signal: AbortSignal | undefined): Promise<TileResult> {
+    const box = tileBox(z, x, y)
+    const chosen = selectCharts(this.charts, z, box)
     if (!chosen.length) return { pixels: null, used: [] }
     const charts = await Promise.all(chosen.map(async (info) => ({ info, file: await this.fileOf(info.id) })))
-    if (t.signal?.aborted) throw new DOMException('Tuile annulée', 'AbortError')
-    return this.runner.run({ z: t.z, x: t.x, y: t.y, charts })
+    if (signal?.aborted) throw new DOMException('Tuile annulée', 'AbortError')
+    const r = await this.runner.run({ z, x, y, charts })
+    const best = bestTier(chosen, z, box)
+    return best === undefined ? r : { ...r, best }
   }
 
   dispose(): void {
