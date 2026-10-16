@@ -4,6 +4,7 @@
 import { ref, watch } from 'vue'
 import L from 'leaflet'
 import {
+  BSB_MIN_ZOOM,
   DEFAULT_BASE,
   SHOM_OVERLAYS,
   baseLayers,
@@ -13,6 +14,8 @@ import {
   shomOverlaySpec,
   type BaseId,
 } from '@/gp39/basemaps'
+import { createBsbLayer } from '@/gp39/bsb/layer'
+import { bsb, getBsbEngine, restoreDirectory } from './useBsb'
 
 export function readPref(k: string, d: string): string {
   try {
@@ -44,13 +47,20 @@ watch(shomLayers, (v) => writePref('gp39.shomlayers', JSON.stringify(v)), { deep
  * redessine quand le choix change. `getMap` renvoie la carte de la fenêtre (ou null si elle est fermée).
  */
 export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => void; releaseBaseMap: () => void } {
-  let tileLayers: L.TileLayer[] = []
+  let tileLayers: L.GridLayer[] = []
 
   function applyBaseMap(): void {
     const map = getMap()
     if (!map) return
     for (const l of tileLayers) map.removeLayer(l)
     tileLayers = []
+    // cartes BSB : un moteur de tuiles propre (lecture à la demande du dossier choisi), au-dessous de tout le reste
+    const bsbOn = baseMap.value === 'bsb' && bsb.phase === 'ready'
+    if (bsbOn) {
+      const layer = createBsbLayer(getBsbEngine(), { zIndex: 1, minZoom: BSB_MIN_ZOOM })
+      layer.addTo(map)
+      tileLayers.push(layer)
+    }
     const specs = [...baseLayers(baseMap.value), ...SHOM_OVERLAYS.filter((o) => shomLayers.value.includes(o.id)).map(shomOverlaySpec)]
     specs.forEach((sp, i) => {
       const options = {
@@ -59,7 +69,7 @@ export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => vo
         ...(sp.minZoom !== undefined ? { minZoom: sp.minZoom } : {}),
         ...(sp.maxNativeZoom !== undefined ? { maxNativeZoom: sp.maxNativeZoom } : {}),
         crossOrigin: true,
-        zIndex: i + 1,
+        zIndex: i + 1 + (bsbOn ? 1 : 0),
       }
       const layer = sp.wms
         ? L.tileLayer.wms(sp.url, { ...options, layers: sp.wms.layers, format: 'image/png', transparent: true, version: '1.3.0' })
@@ -67,8 +77,8 @@ export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => vo
       layer.addTo(map)
       tileLayers.push(layer)
     })
-    // la carte Shom n'existe pas sous le zoom 6 : Leaflet remonte alors le zoom courant
-    map.setMinZoom(baseMinZoom(baseMap.value))
+    // la carte Shom n'existe pas sous le zoom 6 : Leaflet remonte alors le zoom courant (BSB : seulement une fois les cartes chargées)
+    map.setMinZoom(baseMap.value === 'bsb' && !bsbOn ? 2 : baseMinZoom(baseMap.value))
   }
 
   /** À appeler quand la carte est détruite : les couches disparaissent avec elle. */
@@ -78,5 +88,15 @@ export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => vo
 
   watch(baseMap, applyBaseMap)
   watch(shomLayers, applyBaseMap, { deep: true })
+  // nouveau dossier de cartes BSB (ou dossier oublié) : la couche est recréée avec le nouveau catalogue
+  watch(() => bsb.version, applyBaseMap)
+  // fond BSB choisi : retrouve le dossier mémorisé (une seule fois, quelle que soit la fenêtre)
+  watch(
+    baseMap,
+    (v) => {
+      if (v === 'bsb') void restoreDirectory()
+    },
+    { immediate: true },
+  )
   return { applyBaseMap, releaseBaseMap }
 }

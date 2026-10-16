@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   BASE_OPTIONS,
+  BSB_MIN_ZOOM,
   SHOM_OVERLAYS,
   baseLayers,
   baseMinZoom,
@@ -21,8 +22,8 @@ const allSpecs = (): TileSpec[] => [
 ]
 
 describe('fonds de carte', () => {
-  it('propose OpenStreetMap, OpenSeaMap, Shom, EMODnet et « sans fond »', () => {
-    expect(BASE_OPTIONS.map((o) => o.id)).toEqual(['osm', 'openseamap', 'shom', 'emodnet', 'none'])
+  it('propose OpenStreetMap, OpenSeaMap, Shom, EMODnet, cartes BSB locales et « sans fond »', () => {
+    expect(BASE_OPTIONS.map((o) => o.id)).toEqual(['osm', 'openseamap', 'shom', 'emodnet', 'bsb', 'none'])
     expect(BASE_OPTIONS.every((o) => o.label && o.hint)).toBe(true)
   })
 
@@ -64,6 +65,16 @@ describe('fonds de carte', () => {
 
   it('« sans fond » n’empile aucune couche', () => {
     expect(baseLayers('none')).toEqual([])
+  })
+
+  it('cartes BSB : pas de serveur (couche fournie par le moteur local), zoom minimal 5, jamais de domaine à autoriser', () => {
+    expect(baseLayers('bsb')).toEqual([])
+    expect(baseMinZoom('bsb')).toBe(BSB_MIN_ZOOM)
+    expect(BSB_MIN_ZOOM).toBe(5)
+    const o = BASE_OPTIONS.find((x) => x.id === 'bsb')!
+    expect(o.label).toContain('dossier local')
+    expect(o.hint).toContain('Non destinées à la navigation')
+    expect(isBaseId('bsb')).toBe(true)
   })
 
   it('chaque URL est en https et contient les trois variables de tuile (XYZ ou WMTS)', () => {

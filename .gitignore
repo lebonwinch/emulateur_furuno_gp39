@@ -24,3 +24,9 @@ node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# cartes marines BSB/KAP (SHOM, NOAA…) : sous licence, ne jamais les versionner ni les publier
+*.kap
+*.KAP
+*.bsb
+*.BSB

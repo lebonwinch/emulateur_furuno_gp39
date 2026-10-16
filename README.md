@@ -56,6 +56,23 @@ service worker exigent HTTPS (ou `localhost`).
   **Royaume-Uni et Irlande** : il n'existe pas de service libre de cartes marines (les cartes Admiralty du UKHO, également utilisées
   pour l'Irlande, sont payantes et sous licence) ; seuls les fonds OpenSeaMap et EMODnet couvrent ces eaux. Pour ajouter un fond
   (par exemple Admiralty sous licence) : `src/gp39/basemaps.ts` (et son domaine dans la CSP de `index.html`).
+- **Cartes BSB (dossier local)** — cinquième fond des fenêtres « Position » et « Éditeur de waypoints » : on choisit le dossier qui contient
+  ses cartes raster `.kap` (SHOM, NOAA… ; sous-dossiers compris ; les `.bsb` sont de simples fiches, ignorées). Chrome et Edge mémorisent le dossier
+  (une confirmation d'accès est redemandée à chaque session) ; Firefox et Safari le redemandent à chaque fois. **Rien n'est copié, envoyé ni
+  versionné** (`*.kap` et `*.bsb` sont dans `.gitignore`) : les cartes sont sous licence, lues sur place.
+  - **Affichage comme OpenCPN** : pour chaque tuile, la carte la plus détaillée encore lisible (au plus 2 pixels de carte par pixel d'écran, au moins
+    0,5) est dessinée d'abord ; les cartes moins détaillées ne comblent que ce qu'elle ne couvre pas (découpage selon le polygone `PLY` de chaque carte :
+    marges, légendes et cartouches ne s'affichent pas). Zoom 5 à 19, agrandissement au-delà de la résolution des cartes.
+  - **Pourquoi ça reste léger** : jamais de carte chargée en entier (425 cartes = 2,8 Go, 20 Gpixels). Au scan : seul l'en-tête de chaque carte est lu
+    (quelques Ko ; ~7 Mo pour 425 cartes, 0,2 s) et gardé en cache. À l'affichage : la table d'index des lignes (4 octets par ligne, en fin de
+    fichier) est lue une fois, puis chaque tuile ne lit que les lignes qu'elle recouvre (une plage d'octets, en sautant des lignes quand la carte est
+    plus détaillée que l'écran). Le décodage se fait dans des Web Workers (cœurs − 1, 4 au plus) : l'interface ne gèle pas. Les tuiles demandées en
+    dernier passent d'abord, celles qu'on a quittées sont annulées.
+  - **Calage** : points `REF` ajustés par moindres carrés (Mercator : plan longitude × Mercator(latitude) ; gnomonique et Transverse Mercator : plan
+    longitude × latitude, terme bilinéaire), décalage de datum `DTM` appliqué (carte → WGS84, en secondes d'arc : ED50 ≈ −3,6″ en latitude et −5″ en
+    longitude à Lorient). Vérifié sur une carte réelle : le feu de Kernevel du balisage SHOM tombe sur le symbole ★ de la carte.
+  - **Limites** : les cartes affichées gardent leurs couleurs « jour » ; pas de palettes nuit ; les cartes sans points `REF` exploitables sont ignorées
+    (liste dans le panneau) ; en dessous du zoom 5 la tuile couvrirait trop de mers pour être lisible. Ce ne sont pas des cartes de navigation.
 - **Éditeur de waypoints** (panneau de commande, bloc « Données », bouton « Éditeur de waypoints… ») : fenêtre à carte (même choix de fond que
   la fenêtre « Position », partagé) qui **modifie directement les waypoints de l'appareil** : ce qu'on crée, édite ou supprime se voit aussitôt sur le plotter.
   - **Calques** : un calque par fichier GPX importé (« Importer des GPX… » ou glisser-déposer sur le panneau ; chargé en fusion, les
@@ -117,6 +134,7 @@ service worker exigent HTTPS (ou `localhost`).
 src/gp39/            domaine pur (testé) : géodésie, GPX, symboles, formats, simulation, persistance
 src/gp39/ui/         touches → vues (menus, éditeurs, plotter) ; menus.ts = arborescence du manuel
 src/stores/device.ts état de l'appareil (Pinia) : waypoints, routes, traces, navigation, alarmes, boucle 1 Hz
+src/gp39/bsb/        cartes BSB : kap.ts (en-tête, RLE, index), georef.ts (calage), tiles.ts (choix des cartes selon le zoom, rendu), catalog.ts, engine.ts + bsbWorker.ts, layer.ts (Leaflet)
 src/gp39/layers.ts   calques et outils de l'éditeur (rattachement, rectangle de sélection, doublons, contenu d'un export) ; gpxFile.ts : nom du fichier exporté
 src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtres « Position » et « Éditeur de waypoints », panneau de contrôle
 public/data/         waypoints_GP39.gpx (jeu de données chargé au premier lancement)

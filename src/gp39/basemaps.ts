@@ -11,7 +11,7 @@
 //    (relief + profondeurs) et `emodnet:contours` (isobathes) ; couvre les mers d'Europe, dont le Royaume-Uni et l'Irlande.
 //    Ce n'est PAS une carte marine : les cartes Admiralty (UKHO, Royaume-Uni et Irlande) sont payantes, sans service de tuiles libre.
 
-export type BaseId = 'osm' | 'openseamap' | 'shom' | 'emodnet' | 'none'
+export type BaseId = 'osm' | 'openseamap' | 'shom' | 'emodnet' | 'bsb' | 'none'
 
 export interface TileSpec {
   /** identifiant stable (clé de cache, préférences) */
@@ -49,8 +49,16 @@ export const BASE_OPTIONS: BaseOption[] = [
     label: 'Bathymétrie EMODnet (Europe)',
     hint: 'Relief, profondeurs et isobathes EMODnet + marques OpenSeaMap : mers d’Europe, dont Royaume-Uni et Irlande. Ce n’est pas une carte marine (pas de sondes ni de dangers) ; pour naviguer, utiliser les cartes Admiralty officielles.',
   },
+  {
+    id: 'bsb',
+    label: 'Cartes BSB (dossier local)',
+    hint: 'Vos cartes marines raster .kap (SHOM, NOAA…), lues sur place dans le dossier choisi : la carte la plus détaillée encore lisible s’affiche selon le zoom et la zone, comme dans OpenCPN. Non destinées à la navigation.',
+  },
   { id: 'none', label: 'Sans fond', hint: 'Seulement les waypoints.' },
 ]
+
+/** Zoom minimal quand le fond est une carte BSB (en dessous, la tuile couvrirait des milliers de milles : rien de lisible). */
+export const BSB_MIN_ZOOM = 5
 
 export const DEFAULT_BASE: BaseId = 'osm'
 
@@ -161,6 +169,7 @@ export function baseLayers(id: BaseId): TileSpec[] {
 
 /** Zoom minimal imposé à la carte par le fond choisi (la carte Shom n'existe pas en dessous de 6). */
 export function baseMinZoom(id: BaseId): number {
+  if (id === 'bsb') return BSB_MIN_ZOOM
   return Math.max(
     2,
     ...baseLayers(id)
