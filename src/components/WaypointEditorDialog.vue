@@ -37,7 +37,7 @@
 
       <div class="body col row no-wrap">
         <div class="map-col col">
-          <div ref="mapEl" class="map" :class="`map--${mode}`" />
+          <div ref="mapEl" class="map" />
           <div class="map-hint">{{ hint }}</div>
         </div>
 
@@ -110,12 +110,12 @@ import { downloadTextFile } from '@/gp39/download'
 import { DEFAULT_EXPORT_NAME, gpxFileName } from '@/gp39/gpxFile'
 import { selectForExport, waypointsInBox } from '@/gp39/layers'
 import { WaypointCanvasLayer } from '@/gp39/leafletMarks'
-import { DEFAULT_COLOR, DEFAULT_SYMBOL } from '@/gp39/symbols'
 import { LIMITS, type Waypoint } from '@/gp39/types'
 import BaseMapPicker from './BaseMapPicker.vue'
 import EditorLayersPanel from './EditorLayersPanel.vue'
 import WaypointForm from './WaypointForm.vue'
 import { useBaseMap } from './useBaseMap'
+import { lastColor, lastSymbol } from './useLastStyle'
 
 const open = defineModel<boolean>({ default: false })
 const $q = useQuasar()
@@ -237,8 +237,17 @@ function fitLayer(id: number): void {
 }
 
 // ---------------------------------------------------------------- modes
-/** En mode « Sélection » le glisser trace un rectangle : la carte ne se déplace plus. */
+/**
+ * Curseur selon le mode, puis, en mode « Sélection », le glisser trace un rectangle : la carte ne se déplace plus.
+ * La classe du mode est posée à la main : un `:class` Vue réécrirait tout l'attribut `class` de la carte et effacerait les classes
+ * de Leaflet (leaflet-container…), donc son découpage : les tuiles déborderaient sur la barre d'outils.
+ */
 function applyMode(): void {
+  const el = mapEl.value
+  if (el) {
+    el.classList.remove('map--pan', 'map--select', 'map--add')
+    el.classList.add(`map--${mode.value}`)
+  }
   if (!map) return
   if (mode.value === 'select') map.dragging.disable()
   else map.dragging.enable()
@@ -341,8 +350,9 @@ function createAt(ll: L.LatLng): void {
   const w = dev.addWaypoint({
     lat: round7(ll.lat),
     lon: round7(wrapLon(ll.lng)),
-    symbol: DEFAULT_SYMBOL,
-    color: DEFAULT_COLOR,
+    // le dernier symbole et la dernière couleur choisis (par défaut : rond vert)
+    symbol: lastSymbol.value,
+    color: lastColor.value,
     layer: ensureActiveLayer(),
   })
   if (!w) {

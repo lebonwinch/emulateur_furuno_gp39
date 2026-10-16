@@ -28,53 +28,8 @@
             @keyup.enter="commit({ comment: draft.comment })"
           />
         </div>
-        <div class="col-6">
-          <q-select
-            v-model="draft.symbol"
-            dense
-            outlined
-            emit-value
-            map-options
-            label="Symbole"
-            :options="symbolOptions"
-            @update:model-value="(v: number) => commit({ symbol: v })"
-          >
-            <template #selected-item="{ opt }">
-              <span class="row items-center no-wrap"
-                ><i class="mark" v-html="markSvg(opt.value, draft.color, 16)" /><span class="q-ml-xs">{{ opt.label }}</span></span
-              >
-            </template>
-            <template #option="{ opt, itemProps }">
-              <q-item v-bind="itemProps" dense>
-                <q-item-section avatar><i class="mark" v-html="markSvg(opt.value, draft.color, 18)" /></q-item-section>
-                <q-item-section>{{ opt.label }}</q-item-section>
-              </q-item>
-            </template>
-          </q-select>
-        </div>
-        <div class="col-6">
-          <q-select
-            v-model="draft.color"
-            dense
-            outlined
-            emit-value
-            map-options
-            label="Couleur"
-            :options="colorOptions"
-            @update:model-value="(v: number) => commit({ color: v })"
-          >
-            <template #selected-item="{ opt }">
-              <span class="row items-center no-wrap"
-                ><span class="swatch" :style="{ background: COLORS[opt.value] }" /><span class="q-ml-xs">{{ opt.label }}</span></span
-              >
-            </template>
-            <template #option="{ opt, itemProps }">
-              <q-item v-bind="itemProps" dense>
-                <q-item-section avatar><span class="swatch" :style="{ background: COLORS[opt.value] }" /></q-item-section>
-                <q-item-section>{{ opt.label }}</q-item-section>
-              </q-item>
-            </template>
-          </q-select>
+        <div class="col-12">
+          <SymbolColorFields :symbol="draft.symbol" :color="draft.color" @update:symbol="onSymbol" @update:color="onColor" />
         </div>
         <div class="col-6">
           <q-input
@@ -155,8 +110,9 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useDevice } from '@/stores/device'
-import { COLORS, COLOR_NAMES_FR, SYMBOL_COUNT, SYMBOL_NAMES_FR, markSvg } from '@/gp39/symbols'
 import type { Waypoint } from '@/gp39/types'
+import SymbolColorFields from './SymbolColorFields.vue'
+import { lastColor, lastSymbol } from './useLastStyle'
 
 const props = defineProps<{ ids: readonly number[] }>()
 const emit = defineEmits<{ (e: 'delete'): void }>()
@@ -164,8 +120,6 @@ const emit = defineEmits<{ (e: 'delete'): void }>()
 const $q = useQuasar()
 const dev = useDevice()
 
-const symbolOptions = Array.from({ length: SYMBOL_COUNT }, (_, i) => ({ value: i, label: `${i} — ${SYMBOL_NAMES_FR[i] ?? '?'}` }))
-const colorOptions = COLOR_NAMES_FR.map((label, i) => ({ value: i, label: `${i} — ${label}` }))
 const layerOptions = computed(() => dev.layers.map((l) => ({ value: l.id, label: l.name })))
 
 const single = computed<Waypoint | null>(() => {
@@ -211,6 +165,18 @@ function commit(patch: Partial<Omit<Waypoint, 'id'>>): void {
   if (single.value) dev.updateWaypoint(single.value.id, patch)
 }
 
+// le symbole et la couleur choisis ici sont ceux que reprendra le prochain waypoint créé (voir useLastStyle)
+function onSymbol(v: number): void {
+  draft.symbol = v
+  lastSymbol.value = v
+  commit({ symbol: v })
+}
+function onColor(v: number): void {
+  draft.color = v
+  lastColor.value = v
+  commit({ color: v })
+}
+
 function applyPos(): void {
   const w = single.value
   if (!w) return
@@ -242,19 +208,5 @@ function moveToLayer(): void {
 <style scoped lang="scss">
 .mono {
   font-family: 'Roboto Mono', ui-monospace, monospace;
-}
-.mark {
-  display: inline-flex;
-  width: 18px;
-  height: 18px;
-  align-items: center;
-  justify-content: center;
-}
-.swatch {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  border: 1px solid rgba(0, 0, 0, 0.35);
 }
 </style>

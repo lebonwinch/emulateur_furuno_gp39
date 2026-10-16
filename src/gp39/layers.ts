@@ -56,6 +56,13 @@ export function layerCounts(waypoints: readonly Waypoint[]): Map<number, number>
   return m
 }
 
+/** Lit un indice (symbole 0-9, couleur 0-6) enregistré en texte ; `dflt` si absent, non entier ou hors limites. */
+export function parseIndex(raw: string | null | undefined, max: number, dflt: number): number {
+  if (raw === null || raw === undefined || !/^\d{1,3}$/.test(raw.trim())) return dflt
+  const n = Number(raw)
+  return n <= max ? n : dflt
+}
+
 export interface GeoBox {
   south: number
   west: number

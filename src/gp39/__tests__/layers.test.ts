@@ -6,6 +6,7 @@ import {
   duplicateKey,
   layerCounts,
   normaliseLayers,
+  parseIndex,
   selectForExport,
   waypointsInBox,
 } from '../layers'
@@ -65,6 +66,20 @@ describe('normaliseLayers (données d’avant les calques)', () => {
       [2, 'b', true],
     ])
     expect(r.assigned).toBe(0)
+  })
+})
+
+describe('parseIndex (dernier symbole et dernière couleur mémorisés)', () => {
+  it('relit un indice valide, y compris 0 et la borne haute', () => {
+    expect(parseIndex('0', 9, 5)).toBe(0)
+    expect(parseIndex('8', 9, 0)).toBe(8)
+    expect(parseIndex('9', 9, 0)).toBe(9)
+    expect(parseIndex(' 6 ', 6, 2)).toBe(6)
+  })
+  it('valeur absente, hors limites ou invalide : retombe sur la valeur par défaut', () => {
+    for (const raw of [null, undefined, '', 'abc', '-1', '1.5', '10', '7', '1e1', '0x2', '9999']) {
+      expect(parseIndex(raw, raw === '7' ? 6 : 9, 3), String(raw)).toBe(3)
+    }
   })
 })
 

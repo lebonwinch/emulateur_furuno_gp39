@@ -64,7 +64,8 @@ service worker exigent HTTPS (ou `localhost`).
     pas un waypoint identique (nom, position à 1 m près, symbole, couleur) à un waypoint déjà chargé. Les waypoints créés sur l'appareil (MARK, MOB) et les
     données d'avant les calques sont dans le calque « Appareil ». Les traces `<trk>` ne sont pas lues.
   - **Modes** : _Déplacer_ (clic = sélectionner, Ctrl/Maj + clic = ajouter, **Maj + glisser = rectangle de sélection**), _Sélection_ (glisser = rectangle ;
-    Ctrl = ajouter à la sélection) et _Ajouter_ (un clic crée un waypoint dans le calque actif, repéré par le bouton rond de la liste). Échap quitte le mode puis
+    Ctrl = ajouter à la sélection) et _Ajouter_ (un clic crée un waypoint dans le calque actif, repéré par le bouton rond de la liste ; il reprend le **dernier symbole et la dernière couleur**
+    choisis, qu'on voit sélectionnés dans le formulaire du volet de droite dès la création ; on les change en modifiant ceux du waypoint sélectionné ; rond vert au départ, mémorisés dans le navigateur). Échap quitte le mode puis
     vide la sélection ; Suppr supprime la sélection.
   - **Édition** : un seul waypoint sélectionné → formulaire (nom 8 car., commentaire 13 car., symbole, couleur, latitude/longitude, calque, affichage sur le
     plotter) et repère orange à **glisser** pour le déplacer. Plusieurs sélectionnés → déplacer vers un calque, ou **supprimer** (confirmation).
