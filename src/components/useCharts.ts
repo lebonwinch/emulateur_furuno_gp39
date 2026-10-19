@@ -1,4 +1,4 @@
-// Cartes marines de l'utilisateur : dossier choisi, formats reconnus (BSB/KAP, CM93), catalogues, moteurs de tuiles. État partagé
+// Cartes marines de l'utilisateur : dossier choisi, formats reconnus (BSB/KAP, CM93, MBTiles), catalogues, moteurs de tuiles. État partagé
 // par les fenêtres à carte. L'utilisateur ne fournit que le dossier ; ce qu'il contient est reconnu d'après le nom des fichiers.
 //
 // Le navigateur ne laisse lire un dossier qu'avec l'accord de l'utilisateur : « Choisir le dossier » ouvre le sélecteur du
@@ -12,6 +12,8 @@ import type { ChartInfo } from '@/gp39/bsb/tiles'
 import { chartsPixelRatio } from '@/gp39/chartsLayer'
 import { parseDictionaries, type Cm93Dict } from '@/gp39/cm93/dict'
 import { Cm93Engine, createCm93Runner } from '@/gp39/cm93/engine'
+import { attributionHtml, scanMbtiles, type MbCatalogEntry } from '@/gp39/mbtiles/catalog'
+import { MbtilesEngine, createMbRunner } from '@/gp39/mbtiles/engine'
 import { SCALES } from '@/gp39/cm93/scales'
 import { CHARTS_MIN_ZOOM_RASTER, CHARTS_MIN_ZOOM_VECTOR } from '@/gp39/basemaps'
 import { formatsOf, listFolder, listFromFileList, type FolderFormat, type FolderListing } from '@/gp39/library'
@@ -21,9 +23,10 @@ const KEY_DIR = 'charts.dir'
 /** ancienne clé (époque où seules les cartes BSB existaient) : lue si la nouvelle est vide */
 const KEY_DIR_LEGACY = 'bsb.dir'
 const KEY_BSB_CATALOG = 'bsb.catalog'
+const KEY_MB_CATALOG = 'mbtiles.catalog'
 
 export type ChartsPhase = 'empty' | 'needs-permission' | 'scanning' | 'ready' | 'error'
-export type ChartsStep = '' | 'listing' | 'bsb' | 'cm93'
+export type ChartsStep = '' | 'listing' | 'bsb' | 'mbtiles' | 'cm93'
 
 export const charts = reactive({
   phase: 'empty' as ChartsPhase,
@@ -31,7 +34,7 @@ export const charts = reactive({
   dirName: '',
   /** fichiers vus pendant le parcours du dossier */
   files: 0,
-  /** en-têtes BSB lus / à lire */
+  /** en-têtes BSB ou MBTiles lus / à lire */
   scanned: 0,
   total: 0,
   /** formats reconnus dans le dossier */
@@ -48,6 +51,15 @@ export const charts = reactive({
     /** cellules par échelle (indice 0 = Z … 7 = G) */
     perScale: [] as number[],
   },
+  mbtiles: {
+    count: 0,
+    /** fichiers .mbtiles ignorés (illisibles, vectoriels…) */
+    skipped: [] as { id: string; reason: string }[],
+    minZoom: 0,
+    maxZoom: 0,
+    /** sources des fichiers, prêtes pour l'attribution de Leaflet */
+    attribution: '',
+  },
   error: '',
   /** incrémenté à chaque nouveau catalogue : les couches s'en servent pour se recréer */
   version: 0,
@@ -58,12 +70,23 @@ export const canPickDirectory = (): boolean => typeof window !== 'undefined' && 
 
 let bsbEngine: BsbEngine | null = null
 let cm93Engine: Cm93Engine | null = null
+let mbEngine: MbtilesEngine | null = null
 /** Moteurs de tuiles (créés au premier usage : les Workers ne démarrent que si l'on affiche des cartes de ce format). */
 export const getBsbEngine = (): BsbEngine => (bsbEngine ??= new BsbEngine(createRunner()))
 export const getCm93Engine = (): Cm93Engine => (cm93Engine ??= new Cm93Engine(createCm93Runner(), chartsPixelRatio))
+export const getMbtilesEngine = (): MbtilesEngine => (mbEngine ??= new MbtilesEngine(createMbRunner(), chartsPixelRatio))
 
-/** Zoom minimal de la carte quand un dossier est affiché : les cartes vectorielles descendent plus bas que les cartes raster. */
-export const chartsMinZoom = (): number => (charts.formats.includes('cm93') ? CHARTS_MIN_ZOOM_VECTOR : CHARTS_MIN_ZOOM_RASTER)
+/**
+ * Zoom minimal de la carte quand un dossier est affiché : le plus bas de ceux des formats présents (les cartes vectorielles CM93
+ * descendent plus bas que les cartes BSB ; un fichier MBTiles donne son propre zoom minimal, borné entre 2 et 5).
+ */
+export function chartsMinZoom(): number {
+  const mins: number[] = []
+  if (charts.formats.includes('bsb')) mins.push(CHARTS_MIN_ZOOM_RASTER)
+  if (charts.formats.includes('cm93')) mins.push(CHARTS_MIN_ZOOM_VECTOR)
+  if (charts.formats.includes('mbtiles')) mins.push(Math.max(2, Math.min(CHARTS_MIN_ZOOM_RASTER, charts.mbtiles.minZoom)))
+  return mins.length ? Math.min(...mins) : CHARTS_MIN_ZOOM_RASTER
+}
 
 let pendingHandle: DirHandleLike | null = null
 let restored = false
@@ -91,7 +114,7 @@ async function load(dirName: string, listing: () => Promise<FolderListing>): Pro
       fail(
         l.cm93.count && !(l.cm93.obj && l.cm93.attr)
           ? 'Cartes CM93 trouvées, mais pas leurs dictionnaires (CM93OBJ.DIC et CM93ATTR.DIC) : ils doivent se trouver dans le dossier choisi.'
-          : 'Aucune carte reconnue dans ce dossier (formats pris en charge : BSB/KAP et CM93).',
+          : 'Aucune carte reconnue dans ce dossier (formats pris en charge : BSB/KAP, CM93 et MBTiles).',
       )
       return
     }
@@ -116,6 +139,27 @@ async function load(dirName: string, listing: () => Promise<FolderListing>): Pro
       void kvSet(KEY_BSB_CATALOG, { dirName, entries: res.entries })
     }
 
+    // MBTiles : schéma et métadonnées de chaque base (quelques pages), jamais les tuiles
+    let mbEntries: MbCatalogEntry[] = []
+    let mbSkipped: { id: string; reason: string }[] = []
+    if (formats.includes('mbtiles')) {
+      charts.step = 'mbtiles'
+      charts.scanned = 0
+      charts.total = l.mbtiles.length
+      const stored = await kvGet<{ dirName: string; entries: MbCatalogEntry[] }>(KEY_MB_CATALOG)
+      const cache = new Map((stored?.dirName === dirName ? stored.entries : []).map((e) => [e.id, e]))
+      const res = await scanMbtiles(l.mbtiles, {
+        cache,
+        onProgress: (done, total) => {
+          charts.scanned = done
+          charts.total = total
+        },
+      })
+      mbEntries = res.entries
+      mbSkipped = res.skipped
+      void kvSet(KEY_MB_CATALOG, { dirName, entries: res.entries })
+    }
+
     // CM93 : seuls les dictionnaires (quelques dizaines de Ko) sont lus ; les cellules le seront à l'affichage
     let dict: Cm93Dict | null = null
     if (formats.includes('cm93')) {
@@ -129,16 +173,25 @@ async function load(dirName: string, listing: () => Promise<FolderListing>): Pro
     }
 
     const bsbOk = formats.includes('bsb') && bsbCharts.length > 0
-    if (formats.includes('bsb') && !bsbOk && formats.length === 1) {
-      fail('Aucune carte .kap exploitable dans ce dossier.')
+    const mbOk = mbEntries.length > 0
+    if (!bsbOk && !mbOk && !dict) {
+      // rien d'exploitable : on dit pourquoi
+      const why = mbSkipped[0] ? ` (${mbSkipped[0].id} : ${mbSkipped[0].reason})` : ''
+      fail(
+        formats.includes('mbtiles') && formats.length === 1
+          ? `Aucun fichier .mbtiles exploitable dans ce dossier${why}.`
+          : 'Aucune carte exploitable dans ce dossier.',
+      )
       return
     }
     getBsbEngine().setCatalog(bsbOk ? l.kap : [], bsbCharts)
+    if (mbOk) getMbtilesEngine().setCatalog(l.mbtiles, mbEntries)
+    else if (mbEngine) mbEngine.setCatalog([], [])
     if (dict) getCm93Engine().setCatalog(l.cm93, dict)
     else if (cm93Engine) cm93Engine.setCatalog(null, null)
 
     const scales = bsbCharts.map((c) => c.header.scale).filter((s) => s > 0)
-    charts.formats = [...(bsbOk ? (['bsb'] as const) : []), ...(dict ? (['cm93'] as const) : [])]
+    charts.formats = [...(bsbOk ? (['bsb'] as const) : []), ...(mbOk ? (['mbtiles'] as const) : []), ...(dict ? (['cm93'] as const) : [])]
     charts.bsb = {
       count: bsbCharts.length,
       skipped,
@@ -146,6 +199,13 @@ async function load(dirName: string, listing: () => Promise<FolderListing>): Pro
       scaleMax: scales.length ? Math.max(...scales) : 0,
     }
     charts.cm93 = { cells: dict ? l.cm93.count : 0, perScale: dict ? [...l.cm93.perScale] : [] }
+    charts.mbtiles = {
+      count: mbEntries.length,
+      skipped: mbSkipped,
+      minZoom: mbOk ? Math.min(...mbEntries.map((e) => e.info.minzoom)) : 0,
+      maxZoom: mbOk ? Math.max(...mbEntries.map((e) => e.info.maxzoom)) : 0,
+      attribution: mbOk ? attributionHtml(mbEntries.map((e) => e.info)) : '',
+    }
     charts.phase = 'ready'
     charts.step = ''
     charts.version++
@@ -208,7 +268,8 @@ export async function forgetDirectory(): Promise<void> {
   pendingHandle = null
   bsbEngine?.setCatalog([], [])
   cm93Engine?.setCatalog(null, null)
-  await Promise.all([kvSet(KEY_DIR, null), kvSet(KEY_DIR_LEGACY, null), kvSet(KEY_BSB_CATALOG, null)])
+  mbEngine?.setCatalog([], [])
+  await Promise.all([kvSet(KEY_DIR, null), kvSet(KEY_DIR_LEGACY, null), kvSet(KEY_BSB_CATALOG, null), kvSet(KEY_MB_CATALOG, null)])
   Object.assign(charts, {
     phase: 'empty',
     step: '',
@@ -219,6 +280,7 @@ export async function forgetDirectory(): Promise<void> {
     formats: [],
     bsb: { count: 0, skipped: [], scaleMin: 0, scaleMax: 0 },
     cm93: { cells: 0, perScale: [] },
+    mbtiles: { count: 0, skipped: [], minZoom: 0, maxZoom: 0, attribution: '' },
     error: '',
   })
   charts.version++

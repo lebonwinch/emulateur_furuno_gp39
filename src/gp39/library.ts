@@ -4,6 +4,7 @@
 
 import { isKapFile, type ChartFileRef, type DirHandleLike } from './bsb/catalog'
 import { isDictionaryName } from './cm93/dict'
+import { isMbtilesFile } from './mbtiles/catalog'
 import { cellKeyId, parseCellName } from './cm93/scales'
 
 /** Une cellule CM93 du dossier : la principale (« 0 ») puis ses compléments (A, B…). */
@@ -26,25 +27,28 @@ export interface Cm93Listing {
 
 export interface FolderListing {
   kap: ChartFileRef[]
+  /** fichiers MBTiles (tuiles raster dans une base SQLite) */
+  mbtiles: ChartFileRef[]
   cm93: Cm93Listing
   /** fichiers vus au total */
   files: number
 }
 
-export type FolderFormat = 'bsb' | 'cm93'
+export type FolderFormat = 'bsb' | 'cm93' | 'mbtiles'
 
 /** Formats trouvés dans le dossier (CM93 : il faut au moins une cellule et les deux dictionnaires). */
 export function formatsOf(l: FolderListing): FolderFormat[] {
   const out: FolderFormat[] = []
   if (l.kap.length) out.push('bsb')
   if (l.cm93.count && l.cm93.obj && l.cm93.attr) out.push('cm93')
+  if (l.mbtiles.length) out.push('mbtiles')
   return out
 }
 
 const emptyCm93 = (): Cm93Listing => ({ cells: new Map(), count: 0, perScale: Array.from({ length: 8 }, () => 0) })
-export const emptyListing = (): FolderListing => ({ kap: [], cm93: emptyCm93(), files: 0 })
+export const emptyListing = (): FolderListing => ({ kap: [], mbtiles: [], cm93: emptyCm93(), files: 0 })
 
-/** Un fichier vu dans le dossier : `eager` lit sa taille et sa date (.kap), `lazy` ne touche pas au disque (cellules, dictionnaires). */
+/** Un fichier vu dans le dossier : `eager` lit sa taille et sa date (.kap, .mbtiles), `lazy` ne touche pas au disque (cellules, dictionnaires). */
 interface Seen {
   id: string
   name: string
@@ -58,6 +62,7 @@ const then = <T>(v: Promise<T> | T, f: (t: T) => void): Promise<void> | void => 
 function sort(l: FolderListing, f: Seen): Promise<void> | void {
   l.files++
   if (isKapFile(f.name)) return then(f.eager(), (r) => void l.kap.push(r))
+  if (isMbtilesFile(f.name)) return then(f.eager(), (r) => void l.mbtiles.push(r))
   const dict = isDictionaryName(f.name)
   if (dict) {
     // plusieurs jeux de dictionnaires : le moins profond (le plus proche de la racine) fait foi
@@ -80,6 +85,7 @@ function sort(l: FolderListing, f: Seen): Promise<void> | void {
 const finish = (l: FolderListing): FolderListing => {
   for (const list of l.cm93.cells.values()) list.sort((a, b) => (a.sub < b.sub ? -1 : a.sub > b.sub ? 1 : 0))
   l.kap.sort((a, b) => a.id.localeCompare(b.id))
+  l.mbtiles.sort((a, b) => a.id.localeCompare(b.id))
   return l
 }
 
@@ -108,10 +114,10 @@ export async function listFolder(root: DirHandleLike, onProgress?: (files: numbe
         const p = sort(out, {
           id,
           name: entry.name,
-          // .kap : taille et date lues tout de suite (clé du cache de leur catalogue)
+          // .kap et .mbtiles : taille et date lues tout de suite (clé du cache de leur catalogue) ; le File sert aussi aux Workers
           eager: async () => {
             const file = await entry.getFile()
-            return { id, size: file.size, lastModified: file.lastModified, getFile: async () => file }
+            return { id, size: file.size, lastModified: file.lastModified, getFile: async () => file, source: file }
           },
           lazy: () => ({ id, size: 0, lastModified: 0, getFile: () => entry.getFile(), source: entry }),
         })

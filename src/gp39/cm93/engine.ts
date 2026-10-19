@@ -2,8 +2,10 @@
 // Workers, ou en direct si les Workers sont indisponibles). Le pendant de `BsbEngine` pour le format vectoriel.
 
 import type { ChartFileRef } from '../bsb/catalog'
+import { fileSource } from '../fileSource'
 import type { Cm93CellRef, Cm93Listing } from '../library'
 import { TileQueue } from '../tileQueue'
+import { WorkerPool, type PoolReply } from '../workerPool'
 import type { Cm93Dict } from './dict'
 import { planTile } from './plan'
 import { Cm93Renderer, type CellSource, type Cm93Job, type Cm93Result } from './tile'
@@ -33,70 +35,39 @@ export class InlineCm93Runner implements Cm93Runner {
   dispose(): void {}
 }
 
-interface WorkerReply {
-  id: number
+interface Cm93Reply extends PoolReply {
   pixels?: ArrayBuffer | null
   scales?: number[]
   size?: number
-  error?: string
 }
 
 /** Pool de Workers : une tuile à la fois par Worker. */
 export class WorkerCm93Runner implements Cm93Runner {
-  readonly capacity: number
-  private workers: { w: Worker; busy: boolean }[]
-  private waiting = new Map<number, { resolve: (r: Cm93Result) => void; reject: (e: Error) => void; slot: { busy: boolean } }>()
-  private nextId = 1
+  private readonly pool: WorkerPool<Cm93Reply>
 
   constructor(size: number) {
-    this.capacity = size
-    this.workers = Array.from({ length: size }, () => {
-      const w = new Worker(new URL('./cm93Worker.ts', import.meta.url), { type: 'module' })
-      const slot = { w, busy: false }
-      w.onmessage = (e: MessageEvent<WorkerReply>) => {
-        const p = this.waiting.get(e.data.id)
-        if (!p) return
-        this.waiting.delete(e.data.id)
-        p.slot.busy = false
-        if (e.data.error !== undefined) p.reject(new Error(e.data.error))
-        else
-          p.resolve({
-            pixels: e.data.pixels ? new Uint32Array(e.data.pixels) : null,
-            scales: e.data.scales ?? [],
-            size: e.data.size ?? 256,
-          })
-      }
-      w.onerror = (e) => {
-        for (const [id, p] of this.waiting) {
-          if (p.slot === slot) {
-            this.waiting.delete(id)
-            slot.busy = false
-            p.reject(new Error(e.message || 'Erreur du Worker CM93'))
-          }
-        }
-      }
-      return slot
-    })
+    this.pool = new WorkerPool<Cm93Reply>(
+      size,
+      () => new Worker(new URL('./cm93Worker.ts', import.meta.url), { type: 'module' }),
+      'Erreur du Worker CM93',
+    )
+  }
+
+  get capacity(): number {
+    return this.pool.capacity
   }
 
   setDictionary(dict: Cm93Dict | null): void {
-    for (const s of this.workers) s.w.postMessage({ type: 'dict', dict })
+    this.pool.broadcast({ type: 'dict', dict })
   }
 
-  run(job: Cm93Job): Promise<Cm93Result> {
-    const slot = this.workers.find((s) => !s.busy)
-    if (!slot) return Promise.reject(new Error('Aucun Worker libre'))
-    slot.busy = true
-    const id = this.nextId++
-    return new Promise((resolve, reject) => {
-      this.waiting.set(id, { resolve, reject, slot })
-      slot.w.postMessage({ type: 'job', id, job })
-    })
+  async run(job: Cm93Job): Promise<Cm93Result> {
+    const r = await this.pool.run({ type: 'job', job })
+    return { pixels: r.pixels ? new Uint32Array(r.pixels) : null, scales: r.scales ?? [], size: r.size ?? 256 }
   }
 
   dispose(): void {
-    for (const s of this.workers) s.w.terminate()
-    this.waiting.clear()
+    this.pool.dispose()
   }
 }
 
@@ -113,12 +84,8 @@ export function createCm93Runner(): Cm93Runner {
   return new InlineCm93Runner()
 }
 
-/** Source d'une cellule pour le Worker : le File lui-même, ou la poignée du navigateur (relue dans le Worker, seulement si besoin). */
-function sourceOf(ref: ChartFileRef): CellSource {
-  const s = ref.source
-  if (!s) return { id: ref.id, handle: { getFile: () => ref.getFile() } }
-  return s instanceof Blob ? { id: ref.id, file: s } : { id: ref.id, handle: s }
-}
+/** Source d'une cellule pour le Worker (voir `fileSource`) */
+const sourceOf = (ref: ChartFileRef): CellSource => ({ id: ref.id, ...fileSource(ref) })
 
 export class Cm93Engine {
   private cells: ReadonlyMap<string, readonly Cm93CellRef[]> = new Map()

@@ -14,7 +14,8 @@ import {
   type BaseId,
 } from '@/gp39/basemaps'
 import { createChartsLayer } from '@/gp39/chartsLayer'
-import { charts, chartsMinZoom, getBsbEngine, getCm93Engine, restoreDirectory } from './useCharts'
+import { chartsNotice, createChartsNotice } from './chartsNotice'
+import { charts, chartsMinZoom, getBsbEngine, getCm93Engine, getMbtilesEngine, restoreDirectory } from './useCharts'
 
 export function readPref(k: string, d: string): string {
   try {
@@ -47,6 +48,16 @@ watch(shomLayers, (v) => writePref('gp39.shomlayers', JSON.stringify(v)), { deep
  */
 export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => void; releaseBaseMap: () => void } {
   let tileLayers: L.GridLayer[] = []
+  let notice: L.Control | null = null
+
+  /** Message sur la carte tant que le fond « Cartes marines » est choisi sans que le dossier soit prêt (sinon la carte reste vide, sans explication). */
+  function updateNotice(): void {
+    notice?.remove()
+    notice = null
+    const map = getMap()
+    const n = baseMap.value === 'charts' ? chartsNotice() : null
+    if (map && n) notice = createChartsNotice(n).addTo(map)
+  }
 
   function applyBaseMap(): void {
     const map = getMap()
@@ -57,8 +68,12 @@ export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => vo
     const chartsOn = baseMap.value === 'charts' && charts.phase === 'ready'
     if (chartsOn) {
       const layer = createChartsLayer(
-        { bsb: charts.formats.includes('bsb') ? getBsbEngine() : null, cm93: charts.formats.includes('cm93') ? getCm93Engine() : null },
-        { zIndex: 1, minZoom: chartsMinZoom() },
+        {
+          bsb: charts.formats.includes('bsb') ? getBsbEngine() : null,
+          cm93: charts.formats.includes('cm93') ? getCm93Engine() : null,
+          mbtiles: charts.formats.includes('mbtiles') ? getMbtilesEngine() : null,
+        },
+        { zIndex: 1, minZoom: chartsMinZoom(), mbtilesAttribution: charts.mbtiles.attribution },
       )
       layer.addTo(map)
       tileLayers.push(layer)
@@ -81,17 +96,21 @@ export function useBaseMap(getMap: () => L.Map | null): { applyBaseMap: () => vo
     })
     // la carte Shom n'existe pas sous le zoom 6 : Leaflet remonte alors le zoom courant (cartes du dossier : seulement une fois chargées)
     map.setMinZoom(baseMap.value === 'charts' ? (chartsOn ? chartsMinZoom() : 2) : baseMinZoom(baseMap.value))
+    updateNotice()
   }
 
   /** À appeler quand la carte est détruite : les couches disparaissent avec elle. */
   function releaseBaseMap(): void {
     tileLayers = []
+    notice = null
   }
 
   watch(baseMap, applyBaseMap)
   watch(shomLayers, applyBaseMap, { deep: true })
   // nouveau dossier de cartes (ou dossier oublié) : la couche est recréée avec le nouveau catalogue
   watch(() => charts.version, applyBaseMap)
+  // avancement de l'analyse, accès à confirmer, erreur : le message de la carte suit
+  watch(() => [charts.phase, charts.step, charts.files, charts.scanned, charts.error], updateNotice)
   // fond « cartes marines » choisi : retrouve le dossier mémorisé (une seule fois, quelle que soit la fenêtre)
   watch(
     baseMap,

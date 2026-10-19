@@ -4,9 +4,9 @@
     <template v-if="charts.phase === 'empty'">
       <div class="text-caption">
         Choisissez le dossier qui contient vos cartes marines (sous-dossiers compris). Le format est reconnu automatiquement :
-        <b>BSB/KAP</b> (cartes raster : SHOM, NOAA…) ou <b>CM93</b> (cartes vectorielles C-MAP, avec leurs dictionnaires
-        <code>CM93OBJ.DIC</code> et <code>CM93ATTR.DIC</code>). Les cartes ne sont ni copiées ni envoyées : elles sont lues sur place, au
-        fur et à mesure de l’affichage.
+        <b>BSB/KAP</b> (cartes raster : SHOM, NOAA…), <b>MBTiles</b> (tuiles raster dans un fichier <code>.mbtiles</code>) ou
+        <b>CM93</b> (cartes vectorielles C-MAP, avec leurs dictionnaires <code>CM93OBJ.DIC</code> et <code>CM93ATTR.DIC</code>). Les cartes
+        ne sont ni copiées ni envoyées : elles sont lues sur place, au fur et à mesure de l’affichage.
       </div>
       <q-btn dense no-caps outline icon="folder_open" class="q-mt-sm" label="Choisir le dossier…" @click="choose" />
     </template>
@@ -26,8 +26,15 @@
         Parcours du dossier « {{ charts.dirName }} »… {{ charts.files.toLocaleString('fr-FR') }} fichiers
       </div>
       <div v-else-if="charts.step === 'bsb'" class="text-caption">Lecture des cartes BSB… {{ charts.scanned }} / {{ charts.total }}</div>
+      <div v-else-if="charts.step === 'mbtiles'" class="text-caption">
+        Lecture des fichiers MBTiles… {{ charts.scanned }} / {{ charts.total }}
+      </div>
       <div v-else class="text-caption">Lecture des dictionnaires CM93…</div>
-      <q-linear-progress :indeterminate="charts.step !== 'bsb'" :value="charts.total ? charts.scanned / charts.total : 0" class="q-mt-xs" />
+      <q-linear-progress
+        :indeterminate="charts.step !== 'bsb' && charts.step !== 'mbtiles'"
+        :value="charts.total ? charts.scanned / charts.total : 0"
+        class="q-mt-xs"
+      />
     </template>
 
     <!-- prêt -->
@@ -35,6 +42,10 @@
       <div v-if="charts.formats.includes('bsb')" class="text-body2">
         <b>BSB</b> (raster) : <b>{{ charts.bsb.count }}</b> cartes · du {{ scaleText(charts.bsb.scaleMin) }} au
         {{ scaleText(charts.bsb.scaleMax) }}
+      </div>
+      <div v-if="charts.formats.includes('mbtiles')" class="text-body2">
+        <b>MBTiles</b> (raster) : <b>{{ charts.mbtiles.count }}</b> fichier(s) · zoom {{ charts.mbtiles.minZoom }} à
+        {{ charts.mbtiles.maxZoom }}
       </div>
       <div v-if="charts.formats.includes('cm93')" class="text-body2">
         <b>CM93</b> (vectoriel) : <b>{{ charts.cm93.cells.toLocaleString('fr-FR') }}</b> cellules · {{ cm93Range }}
@@ -47,11 +58,11 @@
       <div class="text-caption text-grey-7">
         Dossier « {{ charts.dirName }} ». À chaque zoom et à chaque endroit, la carte la plus détaillée encore lisible s’affiche, les moins
         détaillées complétant ce qu’elle ne couvre pas.
-        <span v-if="charts.bsb.skipped.length" class="text-warning"
-          >{{ charts.bsb.skipped.length }} fichier(s) BSB ignoré(s)
+        <span v-if="skipped.length" class="text-warning"
+          >{{ skipped.length }} fichier(s) ignoré(s)
           <q-tooltip class="charts-tip">
-            <div v-for="s in charts.bsb.skipped.slice(0, 12)" :key="s.id">{{ s.id }} : {{ s.reason }}</div>
-            <div v-if="charts.bsb.skipped.length > 12">…</div>
+            <div v-for="s in skipped.slice(0, 12)" :key="s.id">{{ s.id }} : {{ s.reason }}</div>
+            <div v-if="skipped.length > 12">…</div>
           </q-tooltip></span
         >
       </div>
@@ -92,6 +103,8 @@ import {
 const fileInput = ref<HTMLInputElement | null>(null)
 const canPick = canPickDirectory()
 
+/** fichiers BSB et MBTiles que l'on n'a pas pu utiliser, avec la raison */
+const skipped = computed(() => [...charts.bsb.skipped, ...charts.mbtiles.skipped])
 const cm93Range = computed(() => cm93ScaleRange(charts.cm93.perScale))
 const scaleRows = computed(() =>
   SCALES.map((s, i) => ({ ch: s.ch, denom: s.denom, n: charts.cm93.perScale[i] ?? 0 })).filter((s) => s.n > 0),

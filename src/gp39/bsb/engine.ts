@@ -4,6 +4,7 @@
 import type { ChartFileRef } from './catalog'
 import { TileRenderer, type TileJob, type TileResult } from './runner'
 import { TileQueue } from '../tileQueue'
+import { WorkerPool, type PoolReply } from '../workerPool'
 import { bestTier, selectCharts, tileBox, type ChartInfo } from './tiles'
 
 /** Exécute une tuile ; `capacity` = nombre de tuiles pouvant être fabriquées en même temps. */
@@ -23,53 +24,34 @@ export class InlineRunner implements TileRunner {
   dispose(): void {}
 }
 
+interface BsbReply extends PoolReply {
+  used?: string[]
+  pixels?: ArrayBuffer | null
+}
+
 /** Pool de Workers : une tuile à la fois par Worker. */
 export class WorkerRunner implements TileRunner {
-  readonly capacity: number
-  private workers: { w: Worker; busy: boolean }[]
-  private waiting = new Map<number, { resolve: (r: TileResult) => void; reject: (e: Error) => void; slot: { busy: boolean } }>()
-  private nextId = 1
+  private readonly pool: WorkerPool<BsbReply>
 
   constructor(size: number) {
-    this.capacity = size
-    this.workers = Array.from({ length: size }, () => {
-      const w = new Worker(new URL('./bsbWorker.ts', import.meta.url), { type: 'module' })
-      const slot = { w, busy: false }
-      w.onmessage = (e: MessageEvent<{ id: number; used?: string[]; pixels?: ArrayBuffer | null; error?: string }>) => {
-        const p = this.waiting.get(e.data.id)
-        if (!p) return
-        this.waiting.delete(e.data.id)
-        p.slot.busy = false
-        if (e.data.error !== undefined) p.reject(new Error(e.data.error))
-        else p.resolve({ used: e.data.used ?? [], pixels: e.data.pixels ? new Uint32Array(e.data.pixels) : null })
-      }
-      w.onerror = (e) => {
-        for (const [id, p] of this.waiting) {
-          if (p.slot === slot) {
-            this.waiting.delete(id)
-            slot.busy = false
-            p.reject(new Error(e.message || 'Erreur du Worker BSB'))
-          }
-        }
-      }
-      return slot
-    })
+    this.pool = new WorkerPool<BsbReply>(
+      size,
+      () => new Worker(new URL('./bsbWorker.ts', import.meta.url), { type: 'module' }),
+      'Erreur du Worker BSB',
+    )
   }
 
-  run(job: TileJob): Promise<TileResult> {
-    const slot = this.workers.find((s) => !s.busy)
-    if (!slot) return Promise.reject(new Error('Aucun Worker libre'))
-    slot.busy = true
-    const id = this.nextId++
-    return new Promise((resolve, reject) => {
-      this.waiting.set(id, { resolve, reject, slot })
-      slot.w.postMessage({ id, job })
-    })
+  get capacity(): number {
+    return this.pool.capacity
+  }
+
+  async run(job: TileJob): Promise<TileResult> {
+    const r = await this.pool.run({ job })
+    return { used: r.used ?? [], pixels: r.pixels ? new Uint32Array(r.pixels) : null }
   }
 
   dispose(): void {
-    for (const s of this.workers) s.w.terminate()
-    this.waiting.clear()
+    this.pool.dispose()
   }
 }
 

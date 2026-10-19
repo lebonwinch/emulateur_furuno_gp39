@@ -1,9 +1,10 @@
 // Fabrication d'une tuile CM93 : plusieurs échelles superposées (la plus détaillée au-dessus), chacune limitée à la zone que ses
 // cellules couvrent réellement (les polygones `_m_sor`), comme le « quilt » d'OpenCPN. Même code dans un Worker et en direct.
 
+import type { Ctx, MakeCanvas } from '../canvas'
 import { parseCell } from './cell'
 import type { Cm93Dict } from './dict'
-import { addRing, boxesTouch, drawItems, tileWorldBox, type Ctx, type Env } from './draw'
+import { addRing, boxesTouch, drawItems, tileWorldBox, type Env } from './draw'
 import { prepareCell, type PreparedCell } from './prepare'
 
 export const TILE = 256
@@ -34,12 +35,7 @@ export interface Cm93Result {
   size: number
 }
 
-export interface Canvas2D {
-  width: number
-  height: number
-  getContext(type: '2d'): Ctx | null
-}
-export type MakeCanvas = (w: number, h: number) => Canvas2D
+export type { Canvas2D, MakeCanvas } from '../canvas'
 
 /** Cellules préparées gardées en mémoire (quelques centaines de Ko chacune) ; les plus anciennes sont oubliées. */
 const CELLS_MAX = 32

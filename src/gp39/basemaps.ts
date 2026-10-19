@@ -52,7 +52,7 @@ export const BASE_OPTIONS: BaseOption[] = [
   {
     id: 'charts',
     label: 'Cartes marines (dossier local)',
-    hint: 'Vos cartes marines, lues sur place dans le dossier choisi : le format est reconnu automatiquement (BSB/KAP raster, CM93 vectoriel). La carte la plus détaillée encore lisible s’affiche selon le zoom et la zone, comme dans OpenCPN. Non destinées à la navigation.',
+    hint: 'Vos cartes marines, lues sur place dans le dossier choisi : le format est reconnu automatiquement (BSB/KAP et MBTiles raster, CM93 vectoriel). La carte la plus détaillée encore lisible s’affiche selon le zoom et la zone, comme dans OpenCPN. Non destinées à la navigation.',
   },
   { id: 'none', label: 'Sans fond', hint: 'Seulement les waypoints.' },
 ]

@@ -4,10 +4,11 @@
 // sondes, balisage (bouées, balises, feux avec secteurs), dangers, zones réglementées, noms. Les tailles des symboles sont en
 // pixels d'écran (elles ne grossissent pas avec le zoom) ; `env.k` est le rapport de pixels de l'écran (2 sur écran Retina).
 
+import type { Ctx } from '../canvas'
 import { Layer, type Box, type Item } from './prepare'
 import { PALETTE, depthColour, formatDepth, lightLabel, lightSectorColour, navColours } from './style'
 
-export type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D
+export type { Ctx } from '../canvas'
 
 export interface Env {
   z: number

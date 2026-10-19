@@ -58,13 +58,16 @@ service worker exigent HTTPS (ou `localhost`).
   (par exemple Admiralty sous licence) : `src/gp39/basemaps.ts` (et son domaine dans la CSP de `index.html`).
 - **Cartes marines (dossier local)** — cinquième fond des fenêtres « Position » et « Éditeur de waypoints » : on choisit **un dossier** (sous-dossiers
   compris) et l'application **reconnaît seule le format** de ce qu'il contient, d'après le nom des fichiers : **BSB/KAP** (cartes raster : SHOM, NOAA… ;
-  les `.bsb` sont de simples fiches, ignorées) ou **CM93** (cartes vectorielles C-MAP : cellules `<s><lat 3 chiffres><lon 4 chiffres>.<Z|A…G>` et
-  dictionnaires `CM93OBJ.DIC` / `CM93ATTR.DIC`, qui doivent se trouver dans le dossier). Un dossier qui mêle les deux formats est accepté. Chrome et
-  Edge mémorisent le dossier (une confirmation d'accès est redemandée à chaque session) ; Firefox et Safari le redemandent à chaque fois. **Rien n'est
-  copié, envoyé ni versionné** (`*.kap`, `*.bsb` et `CM93*/` sont dans `.gitignore`) : les cartes sont sous licence, lues sur place.
+  les `.bsb` sont de simples fiches, ignorées), **MBTiles** (`.mbtiles` : tuiles raster dans une base SQLite, par exemple les cartes NOAA) ou **CM93** (cartes vectorielles C-MAP : cellules `<s><lat 3 chiffres><lon 4 chiffres>.<Z|A…G>` et
+  dictionnaires `CM93OBJ.DIC` / `CM93ATTR.DIC`, qui doivent se trouver dans le dossier). Un dossier qui mêle plusieurs formats est accepté. Chrome et
+  Edge mémorisent le dossier (une confirmation d'accès est redemandée à chaque session : tant qu'elle n'est pas donnée — ou si le dossier est illisible —, un
+  message sur la carte le dit et propose « Autoriser l'accès » / « Choisir le dossier… » au lieu de laisser la carte vide) ; Firefox et Safari le redemandent à chaque fois. **Rien n'est
+  copié, envoyé ni versionné** (`*.kap`, `*.bsb`, `*.mbtiles` et `/CM93*/` sont dans `.gitignore`) : les cartes sont sous licence, lues sur place.
   - **Affichage comme OpenCPN** : à chaque zoom et à chaque endroit, la carte la plus détaillée encore lisible est dessinée d'abord, les moins
-    détaillées ne comblant que ce qu'elle ne couvre pas. Si un dossier contient des BSB et du CM93, les BSB passent devant tant qu'une carte BSB est à
-    une échelle lisible, sinon le CM93 (qui choisit toujours son échelle d'après le zoom).
+    détaillées ne comblant que ce qu'elle ne couvre pas. Si un dossier contient plusieurs formats, chaque source donne à chaque tuile un rang de
+    lisibilité et la plus lisible passe devant : une carte BSB à une échelle lisible, ou une tuile MBTiles de son propre niveau de zoom, devant le CM93 ;
+    une carte BSB trop détaillée ou agrandie, ou une tuile MBTiles agrandie de 2 niveaux ou plus, derrière le CM93 (qui choisit toujours son échelle d'après
+    le zoom).
   - **Pourquoi ça reste léger** : jamais de carte chargée en entier. Parcours du dossier : seuls les noms de fichiers sont lus (~1 s pour les 24 800
     cellules d'un CM93 complet) ; BSB : l'en-tête de chaque carte (quelques Ko, mis en cache) ; CM93 : les deux dictionnaires (30 Ko). À l'affichage,
     chaque tuile ne lit que ce qu'elle recouvre (BSB : les lignes de raster utiles ; CM93 : les 1 à 4 cellules de l'échelle voulue, plus les échelles
@@ -74,6 +77,19 @@ service worker exigent HTTPS (ou `localhost`).
     ne s'affichent pas). Calage : points `REF` ajustés par moindres carrés (Mercator : plan longitude × Mercator(latitude) ; gnomonique et Transverse
     Mercator : plan longitude × latitude, terme bilinéaire), décalage de datum `DTM` appliqué (carte → WGS84, en secondes d'arc : ED50 ≈ −3,6″ en
     latitude et −5″ en longitude à Lorient). Vérifié sur une carte réelle : le feu de Kernevel du balisage SHOM tombe sur le symbole ★ de la carte.
+  - **MBTiles** : lecteur SQLite minimal maison (`src/gp39/mbtiles/sqlite.ts`, sans sql.js ni dépendance) qui lit le fichier par plages d'octets — jamais
+    chargé en entier, des centaines de Mo ou Go restent sur le disque : en-tête, schéma, métadonnées au scan ; à l'affichage 3 ou 4 pages d'index puis la page
+    de la tuile (suite de pages de débordement comprise), avec un cache de 8 Mo par fichier. Prend en charge `tiles` en table avec index
+    `(zoom_level, tile_column, tile_row)` ou clé primaire, `WITHOUT ROWID`, et l'organisation `map` + `images` (`tiles` en vue : MBUtil, MapTiler) ;
+    tuiles PNG, JPEG et WebP (reconnues d'après leurs octets), lignes TMS (ou `scheme=xyz`), tuiles de 256 ou 512 px. Un fichier est choisi pour une
+    tuile d'après son emprise (`bounds`) et ses zooms (`minzoom`/`maxzoom`) : tuiles natives d'abord (le fichier au dernier zoom le plus grand en tête),
+    puis fichiers à agrandir au-delà de leur dernier zoom ; les trous d'une tuile sont comblés par le fichier suivant. Un fichier n'a de tuiles que là où il y a
+    des données (et son `maxzoom` n'est pas toujours atteint partout, comme dans les fichiers NOAA) : quand la tuile du niveau voulu est absente, on utilise celle du
+    niveau juste au-dessus, agrandie, puis du suivant… jusqu'à 5 niveaux ou au zoom minimal du fichier, pour que rien ne disparaisse quand on zoome ; une tuile
+    présente mais vide, elle, est crue (elle dit qu'il n'y a rien). Décodage des images (`createImageBitmap`) et
+    assemblage dans des Web Workers. L'attribution des métadonnées est affichée en texte seul (balises retirées). **Limites** : tuiles vectorielles
+    (`pbf`) non prises en charge (fichier ignoré, raison indiquée dans le panneau) ; fichier sans index sur les trois colonnes de clé ignoré (la
+    lecture serait trop lente) ; pas de WAL ni de UTFGrid ; une carte NOAA ou autre garde ses couleurs et son rendu : l'émulateur ne les interprète pas.
   - **CM93** : échelles Z (1:20 M), A (1:3 M), B (1:1 M), C (1:200 000), D (1:100 000), E (1:50 000), F (1:20 000), G (1:7 500), choisies d'après les
     mètres par pixel avec les seuils d'OpenCPN ; chaque échelle est limitée à la zone que ses cellules couvrent réellement (polygones `_m_sor`, un par
     carte source), les échelles plus petites complétant le reste (« quilt »). Les cellules sont décodées (table de substitution d'octets, coordonnées 16
@@ -154,7 +170,8 @@ src/gp39/ui/         touches → vues (menus, éditeurs, plotter) ; menus.ts = a
 src/stores/device.ts état de l'appareil (Pinia) : waypoints, routes, traces, navigation, alarmes, boucle 1 Hz
 src/gp39/bsb/        cartes BSB : kap.ts (en-tête, RLE, index), georef.ts (calage), tiles.ts (choix des cartes selon le zoom, rendu), catalog.ts, engine.ts + bsbWorker.ts
 src/gp39/cm93/       cartes CM93 : decode.ts + cell.ts (cellule), dict.ts + attrs.ts (dictionnaires, attributs), scales.ts + plan.ts (échelles, cellules d'une tuile), prepare.ts + style.ts + draw.ts (dessin), tile.ts (quilt), engine.ts + cm93Worker.ts
-src/gp39/library.ts  dossier de cartes : parcours, reconnaissance automatique du format (BSB / CM93) ; tileQueue.ts : file des tuiles ; chartsLayer.ts : couche Leaflet commune
+src/gp39/mbtiles/      cartes MBTiles : sqlite.ts (lecteur SQLite minimal), mbtiles.ts (tables, métadonnées, tuile), plan.ts (fichiers d'une tuile), render.ts, catalog.ts, engine.ts + mbtilesWorker.ts
+src/gp39/library.ts  dossier de cartes : parcours, reconnaissance automatique du format (BSB / CM93) ; tileQueue.ts : file des tuiles ; workerPool.ts : pool de Workers ; tileCompose.ts + chartsLayer.ts : superposition des formats, couche Leaflet commune
 src/gp39/layers.ts   calques et outils de l'éditeur (rattachement, rectangle de sélection, doublons, contenu d'un export) ; gpxFile.ts : nom du fichier exporté
 src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtres « Position » et « Éditeur de waypoints », panneau de contrôle
 public/data/         waypoints_GP39.gpx (jeu de données chargé au premier lancement)
