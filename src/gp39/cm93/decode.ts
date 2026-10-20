@@ -3,10 +3,10 @@
 // Chaque fichier de cellule est « brouillé » octet par octet : une table de substitution (une permutation de 0..255) est appliquée
 // à tout le fichier, entiers et nombres flottants compris. Une fois le fichier décodé, les valeurs sont en little-endian.
 //
-// ATTENTION — origine de la table : ce n'est pas une construction logique, c'est une constante du format. Elle a été relevée dans
-// la source d'OpenCPN (cm93.cpp, licence GPL-2+, `Table_0`), qui sert de référence de compatibilité pour le format CM93 ; les
-// octets de la table sont vérifiés par le contrôle d'intégrité de chaque fichier (voir `parseCell`). Si ce dépôt est publié,
-// voir README.md (« Cartes CM93 ») pour la question de licence.
+// Origine de la table : ce n'est pas une construction logique, c'est une constante du format. Elle a été relevée dans la source
+// d'OpenCPN (cm93.cpp, `Table_0`, GNU GPL version 2 ou ultérieure, © 2010 David S. Register), qui sert de référence de compatibilité
+// pour le format CM93 ; ses octets sont vérifiés par le contrôle d'intégrité de chaque fichier (voir `parseCell`). Ce projet est sous
+// GNU GPL version 3 ou ultérieure (fichier LICENSE) : compatible, voir README.md (« Licence »).
 
 const TABLE_0 = [
   0xcd, 0xea, 0xdc, 0x48, 0x3e, 0x6d, 0xca, 0x7b, 0x52, 0xe1, 0xa4, 0x8e, 0xab, 0x05, 0xa7, 0x97, 0xb9, 0x60, 0x39, 0x85, 0x7c, 0x56, 0x7a,

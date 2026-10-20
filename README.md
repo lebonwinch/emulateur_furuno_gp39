@@ -1,10 +1,15 @@
-# Émulateur Furuno GP-39 (PWA Vue 3 / Quasar)
+# Émulateur compatible GP-39 (PWA Vue 3 / Quasar)
 
-Émulateur de l'écran du GPS **Furuno GP-39** : il affiche un fichier GPX de waypoints (`waypoints_GP39.gpx`, balisage SHOM)
+Émulateur de l'écran d'un traceur GPS **compatible GP-39** : il affiche un fichier GPX de waypoints (`waypoints_GP39.gpx`, balisage du Shom)
 comme le matériel, avec les mêmes couleurs, les mêmes pictogrammes, les mêmes écrans, la même façade à 6 touches + CursorPad
-et les mêmes menus. Référence : manuel officiel _GP-39 Operator's Manual_ OME-44942-D (dossier `../doc_gp39`).
+et les mêmes menus. Référence de fonctionnement : le manuel _GP-39 Operator's Manual_ OME-44942-D du constructeur (non redistribué ici).
 
 > Ce n'est pas un instrument de navigation.
+>
+> « FURUNO » et « GP-39 » sont des marques de Furuno Electric Co., Ltd., citées uniquement pour indiquer la compatibilité. Ce projet n'est
+> ni affilié à Furuno ni approuvé par elle.
+>
+> Logiciel libre sous licence **GNU GPL v3 ou ultérieure** : voir [Licence](#licence).
 
 ## Démarrer
 
@@ -105,8 +110,8 @@ service worker exigent HTTPS (ou `localhost`).
     l'échelle inférieure s'affiche alors à leur place. Ce ne sont pas des cartes de navigation.
   - **Origine du décodage CM93** : le format n'est pas documenté publiquement. La table de substitution d'octets (`src/gp39/cm93/decode.ts`, 256 octets)
     et la structure des cellules ont été relevées dans la source d'OpenCPN (`cm93.cpp`, licence GPL-2+), qui sert de référence de compatibilité ; le
-    code de ce dépôt est une réécriture indépendante en TypeScript. **Avant toute publication**, trancher la question de licence : une table de 256
-    octets est une constante fonctionnelle, mais elle vient d'un projet GPL.
+    code de ce dépôt est une réécriture en TypeScript (qui n'est pas pour autant une réécriture « en salle blanche » : la source d'OpenCPN a été lue
+    pour la comprendre). Le projet étant sous GPL-3.0-or-later, il est compatible avec la GPL-2.0-or-later d'OpenCPN : voir [Licence](#licence).
 - **Éditeur de waypoints** (panneau de commande, bloc « Données », bouton « Éditeur de waypoints… ») : fenêtre à carte (même choix de fond que
   la fenêtre « Position », partagé) qui **modifie directement les waypoints de l'appareil** : ce qu'on crée, édite ou supprime se voit aussitôt sur le plotter.
   - **Calques** : un calque par fichier GPX importé (« Importer des GPX… » ou glisser-déposer sur le panneau ; chargé en fusion, les
@@ -174,8 +179,44 @@ src/gp39/mbtiles/      cartes MBTiles : sqlite.ts (lecteur SQLite minimal), mbti
 src/gp39/library.ts  dossier de cartes : parcours, reconnaissance automatique du format (BSB / CM93) ; tileQueue.ts : file des tuiles ; workerPool.ts : pool de Workers ; tileCompose.ts + chartsLayer.ts : superposition des formats, couche Leaflet commune
 src/gp39/layers.ts   calques et outils de l'éditeur (rattachement, rectangle de sélection, doublons, contenu d'un export) ; gpxFile.ts : nom du fichier exporté
 src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtres « Position » et « Éditeur de waypoints », panneau de contrôle
-public/data/         waypoints_GP39.gpx (jeu de données chargé au premier lancement)
+public/data/         waypoints_GP39.gpx (jeu de données chargé au premier lancement ; citation du Shom dans ses métadonnées GPX)
+public/legal/        LICENSE et THIRD_PARTY_NOTICES.md servis avec l'application (copies générées par `npm run notices`)
+scripts/notices.mjs  génère THIRD_PARTY_NOTICES.md (avis et textes de licence des composants embarqués)
+src/gp39/about.ts    identité, licence et crédits (écran « À propos et licences », THIRD_PARTY_NOTICES.md, tests)
+LICENSE              GNU General Public License version 3
+THIRD_PARTY_NOTICES.md  composants tiers, données, services et textes de licence (fichier généré)
 ```
 
 Pour changer le jeu de données livré avec l'application, remplacer `public/data/waypoints_GP39.gpx` puis reconstruire ; dans un
 navigateur qui a déjà lancé l'application, utiliser « Recharger waypoints_GP39.gpx » (les données sont mémorisées localement).
+
+## Licence
+
+Copyright © 2026 Vincent Aizier.
+
+Ce programme est un logiciel libre : vous pouvez le redistribuer et/ou le modifier selon les termes de la **GNU General Public License**
+publiée par la Free Software Foundation, soit la **version 3** de la licence, soit (à votre choix) toute version ultérieure
+(`GPL-3.0-or-later`, texte complet dans [`LICENSE`](LICENSE)). Il est distribué dans l'espoir qu'il sera utile, mais **sans aucune garantie**,
+pas même celle de sa valeur marchande ni de son adéquation à un usage particulier.
+
+- **Code source** : toute personne qui reçoit l'application (servie sur le web, installée comme PWA) doit pouvoir obtenir le code source
+  correspondant ; l'écran « À propos et licences » du panneau de commande renvoie au dépôt. Qui publie une version modifiée doit en faire de même.
+- **Composants tiers** : [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) (copie servie avec l'application dans `legal/`) donne, pour chaque
+  composant embarqué (Vue, Quasar, Pinia, Vue Router, Leaflet, geomagnetism, polices Roboto / Roboto Condensed / VT323, icônes Material, workbox…),
+  sa version, sa licence et son texte. Tous sont compatibles avec la GPL-3.0-or-later (MIT, BSD, Apache-2.0, SIL OFL). Le fichier est généré :
+  après toute mise à jour des dépendances, lancer `npm run notices`.
+- **Format CM93** : voir « Origine du décodage CM93 » plus haut. Le projet étant lui-même sous GPL, la réutilisation de la table de substitution
+  d'octets relevée dans OpenCPN (GPL-2.0 ou ultérieure, © 2010 David S. Register) ne pose pas de conflit de licence.
+- **Marques** : « FURUNO » et « GP-39 » sont des marques de Furuno Electric Co., Ltd. Le nom du dépôt (`emulateur_furuno_gp39`) les cite pour
+  la même raison (compatibilité) ; l'application, elle, s'appelle « Émulateur compatible GP-39 » et n'affiche pas le logo du constructeur.
+  La façade reproduit la disposition des touches du matériel : à modifier si l'on veut s'en éloigner.
+- **Données livrées** — `public/data/waypoints_GP39.gpx` : 2 252 balises extraites du jeu « Balisage maritime (aides à la navigation) » du Shom,
+  filtrées et converties au format GPX, symboles et couleurs GP-39 ajoutés. Licence Ouverte Etalab 2.0 ; citation obligatoire :
+  **« Shom, 2026. https://dx.doi.org/10.17183/DOI_BALISAGE_MARITIME »**. Ces données ne doivent pas servir à la navigation. La citation figure dans
+  les métadonnées du fichier GPX et dans l'écran « À propos et licences ».
+- **Fonds de carte en ligne** (chargés par le navigateur de l'utilisateur, jamais copiés ni mis en cache par l'application) : OpenStreetMap (ODbL,
+  [politique d'usage des tuiles](https://operations.osmfoundation.org/policies/tiles/) à respecter : usage léger, attribution visible),
+  OpenSeaMap (données ODbL, tuiles CC BY-SA 2.0), Géoplateforme de l'IGN ([CGU](https://cartes.gouv.fr/cgu) ; licence propre à chaque jeu de données),
+  couches libres du Shom, EMODnet Bathymetry (CC BY 4.0). Chacun affiche sa source en bas à droite de la carte.
+- **Cartes de l'utilisateur** (BSB/KAP, CM93, MBTiles) : lues sur place dans le navigateur, jamais envoyées ni versionnées. Leur licence est celle de
+  leur éditeur (SHOM, C-MAP, NOAA…) et reste à la charge de l'utilisateur ; l'application ne contient ni ne distribue aucune carte.

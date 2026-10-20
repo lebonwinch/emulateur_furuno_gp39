@@ -26,8 +26,8 @@
         </div>
       </template>
       <div v-else-if="dev.power === 'booting'" class="boot">
-        <div class="brand">FURUNO</div>
-        <div class="model">GPS NAVIGATOR GP-39</div>
+        <div class="brand">ÉMULATEUR</div>
+        <div class="model">compatible GP-39</div>
       </div>
     </div>
   </div>
@@ -159,11 +159,11 @@ const stageStyle = computed(() => ({
   align-items: center;
   justify-content: center;
   .brand {
-    font-family: Georgia, 'Times New Roman', serif;
+    font-family: 'Roboto Condensed', Arial, sans-serif;
     font-weight: 700;
-    letter-spacing: 12px;
-    font-size: 58px;
-    color: #8a6a2d;
+    letter-spacing: 10px;
+    font-size: 48px;
+    color: #4a4f55;
   }
   .model {
     font-family: 'VT323', monospace;

@@ -54,11 +54,10 @@
       </q-card>
     </q-expansion-item>
 
-    <q-expansion-item dense dense-toggle label="À propos" icon="info" class="rounded-borders bordered-card">
+    <q-expansion-item dense dense-toggle label="À propos et licences" icon="info" class="rounded-borders bordered-card">
       <q-card flat>
-        <q-card-section class="text-caption">
-          Émulateur de l’écran du GPS Furuno GP-39 d’après le manuel OME-44942-D. Les données de balisage viennent du fichier
-          waypoints_GP39.gpx (SHOM). Ceci n’est pas un instrument de navigation.
+        <q-card-section>
+          <AboutPanel />
         </q-card-section>
       </q-card>
     </q-expansion-item>
@@ -76,6 +75,7 @@ import { downloadTextFile } from '@/gp39/download'
 import { formatLat, formatLon } from '@/gp39/format'
 import { centerOnShip } from '@/gp39/ui/plotter'
 import { fileHooks } from '@/gp39/ui/menus'
+import AboutPanel from './AboutPanel.vue'
 import SymbolLegend from './SymbolLegend.vue'
 
 defineEmits<{ (e: 'position'): void; (e: 'editor'): void }>()

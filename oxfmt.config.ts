@@ -11,6 +11,10 @@ export default defineConfig({
     'src-cordova/',
     'src-capacitor/',
     'src/router/typed-router.d.ts',
+    // fichiers générés par `npm run notices` : textes de licence reproduits tels quels
+    'THIRD_PARTY_NOTICES.md',
+    'public/legal/',
+    'LICENSE',
   ],
 
   printWidth: 140,

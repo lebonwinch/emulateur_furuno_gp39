@@ -42,9 +42,9 @@
       "purpose": "monochrome"
     }
   ],
-  "name": "Furuno GP-39 — émulateur",
+  "name": "Émulateur compatible GP-39",
   "short_name": "GP-39",
-  "description": "Émulateur de l'écran du GPS Furuno GP-39 pour visualiser des waypoints GPX",
+  "description": "Émulateur de l'écran d'un traceur GPS compatible GP-39 pour visualiser des waypoints GPX",
   "lang": "fr",
   "categories": ["navigation", "utilities"],
   "display_override": ["standalone", "minimal-ui"]

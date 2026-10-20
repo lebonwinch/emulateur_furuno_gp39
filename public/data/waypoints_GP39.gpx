@@ -1,5 +1,13 @@
 <?xml version="1.0"?>
 <gpx version="1.1" creator="GDAL 3.1.4" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ogr="http://osgeo.org/gdal" xmlns="http://www.topografix.com/GPX/1/1" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+<metadata>
+  <name>Balisage maritime du Shom — extraction pour l’émulateur GP-39</name>
+  <desc>Shom, 2026. https://dx.doi.org/10.17183/DOI_BALISAGE_MARITIME. Données filtrées et converties au format GPX, symboles et couleurs GP-39 ajoutés. Ne pas utiliser pour la navigation.</desc>
+  <copyright author="Shom">
+    <year>2026</year>
+    <license>https://www.etalab.gouv.fr/licence-ouverte-open-licence/</license>
+  </copyright>
+</metadata>
 <wpt lat="48.6753726" lon="-3.8842314">
   <name>29A00050</name>
   <extensions>

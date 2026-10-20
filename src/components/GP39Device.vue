@@ -1,6 +1,6 @@
 <template>
   <div ref="root" class="gp39" :class="{ lit: dev.power === 'on', compact }" :style="keyLight">
-    <div class="logo">FURUNO</div>
+    <div class="logo">ÉMULATEUR</div>
 
     <div class="lcd-frame">
       <div class="lcd-glass">
@@ -283,11 +283,11 @@ void openZoom
   position: absolute;
   left: 9.3%;
   top: 13%;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-weight: 700;
-  font-size: 3cqw;
-  letter-spacing: 0.42cqw;
-  color: #b7924f;
+  font-family: 'Roboto Condensed', Arial, sans-serif;
+  font-weight: 600;
+  font-size: 2.2cqw;
+  letter-spacing: 0.6cqw;
+  color: #9aa0a6;
   text-shadow: 0 0.1cqw 0.1cqw rgba(0, 0, 0, 0.7);
 }
 .lcd-frame {
