@@ -125,7 +125,7 @@ function cellView(c: UserCell): CellView {
     case 'POSN':
       return { label: 'POSN', unit: '', value: '', lines: [v.lat.value, v.lon.value] }
     case 'Volts':
-      return { label: 'Volts', unit: '(V)', value: dev.sim.volts.toFixed(1) }
+      return { label: 'Volts', unit: '(V)', value: dev.volts === null ? '--' : dev.volts.toFixed(1) }
     case 'SOG':
       return { label: 'SOG', unit: `(${v.sUnit.value})`, value: v.sog.value }
     case 'COG':

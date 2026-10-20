@@ -12,7 +12,23 @@ import {
   normaliseLayers,
   selectForExport,
 } from '@/gp39/layers'
-import { defaultSettings, defaultSim, DEFAULT_SHIP, type SimConfig } from '@/gp39/defaults'
+import { defaultSettings, defaultSim, DEFAULT_SHIP, type PositionSource, type SimConfig } from '@/gp39/defaults'
+import {
+  DeviceGps,
+  Kinematics,
+  MAX_FIX_ACCURACY_M,
+  MIN_COG_SOG_KN,
+  Freshness,
+  detectGeolocation,
+  fixFromAccuracy,
+  hdopFromAccuracy,
+  permissionState,
+  type Detected,
+  type DeviceFix,
+  type GeolocationLike,
+  type GpsStatus,
+} from '@/gp39/deviceGps'
+import { createScreenWake } from '@/gp39/screenWake'
 import { debounce, kvClear, kvGet, kvSet } from '@/gp39/persist'
 import { computeFix, createSatellites, stepSatellites, FIX_IS_DIFFERENTIAL, type FixInfo } from '@/gp39/sim'
 import { startAlarmBuzzer, stopAlarmBuzzer } from '@/gp39/audio'
@@ -84,7 +100,8 @@ export const useDevice = defineStore('device', () => {
   const power = ref<Power>('on')
   const powerOffCountdown = ref<number | null>(null)
   const sats = shallowRef<Satellite[]>(createSatellites())
-  const fixInfo = ref<FixInfo>({ fix: '---', used: [], hdop: 9.9, pdop: 9.9 })
+  const noFix = (): FixInfo => ({ fix: '---', used: [], hdop: 9.9, pdop: 9.9 })
+  const fixInfo = ref<FixInfo>(noFix())
   /** secondes écoulées depuis la mise sous tension (acquisition du fix) */
   const sinceFix = ref(0)
 
@@ -177,7 +194,8 @@ export const useDevice = defineStore('device', () => {
   }
 
   function addWaypoint(p: Partial<Waypoint> & LatLon): Waypoint | null {
-    if (waypoints.value.length >= LIMITS.waypoints) return null
+    // le Quick Point remplace le précédent et doit toujours pouvoir être créé : une mémoire pleine ne l'empêche pas (sinon GO TO resterait muet)
+    if (!p.qp && waypoints.value.length >= LIMITS.waypoints) return null
     const w: Waypoint = {
       id: nextId++,
       name: (p.name ?? nextWaypointName()).slice(0, LIMITS.nameLen),
@@ -423,10 +441,19 @@ export const useDevice = defineStore('device', () => {
   const routeWaypointIds = computed(() => new Set(currentRouteSeq()))
 
   // ---------------------------------------------------------------- GPS / simulation
-  const fix = computed<Fix>(() => (sim.demo ? 'SIM' : fixInfo.value.fix))
-  const hasFix = computed(() => power.value === 'on' && (sim.demo || fixInfo.value.fix !== '---'))
+  /** la position vient du simulateur (et non du GPS de l'appareil) */
+  const isSim = computed(() => sim.source === 'sim')
+  const fix = computed<Fix>(() => (isSim.value && sim.demo ? 'SIM' : fixInfo.value.fix))
+  const hasFix = computed(() => power.value === 'on' && ((isSim.value && sim.demo) || fixInfo.value.fix !== '---'))
 
-  function setShipPosition(lat: number, lon: number, opts: { jump?: boolean } = {}): void {
+  /** Tension d'alimentation : simulée ; l'appareil ne la connaît pas (null → « -- »). */
+  const volts = computed<number | null>(() => (isSim.value ? sim.volts : null))
+  /** Altitude (m) : simulée, ou celle du GPS de l'appareil quand il la fournit. */
+  const altitude = computed<number | null>(() => (isSim.value ? sim.altitude : fixInfo.value.fix === '---' ? null : gps.altitude))
+
+  /** Place le bateau (simulateur uniquement) ; renvoie false si la position vient du GPS de l'appareil. */
+  function setShipPosition(lat: number, lon: number, opts: { jump?: boolean } = {}): boolean {
+    if (!isSim.value) return false
     ship.lat = Math.max(-89.9, Math.min(89.9, lat))
     ship.lon = ((((lon + 180) % 360) + 360) % 360) - 180
     if (opts.jump !== false) pendingGap = true
@@ -434,6 +461,156 @@ export const useDevice = defineStore('device', () => {
       // un déplacement manuel ne doit pas fausser l'écart traversier : le tronçon repart d'ici
       dest.value.from = { lat: ship.lat, lon: ship.lon }
     }
+    return true
+  }
+
+  // ---------------------------------------------------------------- GPS de l'appareil
+  // Le navigateur donne la position, sa précision et parfois l'altitude, la vitesse et le cap (gp39/deviceGps.ts) : pas de satellites.
+  const gps = reactive({
+    status: 'off' as GpsStatus,
+    /** précision horizontale de la dernière position reçue (m) */
+    accuracy: null as number | null,
+    altitude: null as number | null,
+    /** instant (ms) de la dernière position exploitable, 0 si aucune */
+    lastFixAt: 0,
+    /** message d'erreur du navigateur, pour le diagnostic */
+    message: '',
+  })
+  const kinematics = new Kinematics()
+  const freshness = new Freshness()
+  const screenWake = createScreenWake()
+  let gpsWatch: DeviceGps | null = null
+  /** géolocalisation imposée (tests) ; sinon celle du navigateur */
+  let gpsProvider: GeolocationLike | null = null
+  let lastGood: DeviceFix | null = null
+  /** au premier fix qui suit un changement de source, le tronçon de la route repart de la position réelle */
+  let rebaseDest = false
+  let noFixSec = 0
+
+  /** État du fix d'après la dernière position exploitable : aucun fix si elle est périmée (voir `Freshness`). */
+  function deviceFixInfo(): FixInfo {
+    const f = lastGood
+    if (!f || nowMs.value - gps.lastFixAt > freshness.staleMs(f.accuracy)) return noFix()
+    const hdop = hdopFromAccuracy(f.accuracy)
+    return { fix: fixFromAccuracy(f.accuracy, f.altitude !== null), used: [], hdop, pdop: hdop }
+  }
+
+  function onDeviceFix(f: DeviceFix): void {
+    if (isSim.value) return // position arrivée après le retour au simulateur
+    gps.accuracy = Number.isFinite(f.accuracy) ? f.accuracy : null
+    if (!(f.accuracy <= MAX_FIX_ACCURACY_M)) {
+      // trop vague (position par adresse IP…) : le bateau reste où il était, sans fix
+      gps.status = 'imprecise'
+      return
+    }
+    const first = lastGood === null
+    if (first) {
+      pendingGap = true
+      if (rebaseDest && dest.value) dest.value.from = { lat: f.lat, lon: f.lon }
+      rebaseDest = false
+    } else if (distance(shipPos.value, f) > 1) pendingGap = true // saut (veille de l'onglet) : pas de trait sur la trace
+    const motion = kinematics.update(f)
+    ship.lat = Math.max(-89.9, Math.min(89.9, f.lat))
+    ship.lon = f.lon
+    ship.sog = motion.sogKn
+    if (motion.cog !== null) ship.cog = motion.cog
+    ship.hasCog = motion.cog !== null
+    lastGood = f
+    gps.lastFixAt = Date.now()
+    freshness.note(gps.lastFixAt)
+    gps.altitude = f.altitude
+    gps.status = 'tracking'
+    gps.message = ''
+    fixInfo.value = deviceFixInfo()
+  }
+
+  function onDeviceError(status: GpsStatus, message: string): void {
+    if (isSim.value) return
+    gps.status = status
+    gps.message = message
+  }
+
+  function stopDeviceGps(): void {
+    gpsWatch?.stop()
+    gpsWatch = null
+    screenWake.off()
+    kinematics.reset()
+    freshness.reset()
+    lastGood = null
+    noFixSec = 0
+  }
+
+  /** Démarre le suivi (affiche la demande d'autorisation du navigateur si elle n'a pas encore été donnée) : à lancer sur un geste de l'utilisateur. */
+  function enableDeviceGps(): void {
+    if (isSim.value) return
+    const found: Detected = gpsProvider ? { provider: gpsProvider, status: 'ok' } : detectGeolocation()
+    stopDeviceGps()
+    if (found.provider === null) {
+      gps.status = found.status
+      return
+    }
+    gps.status = 'starting'
+    gps.message = ''
+    gpsWatch = new DeviceGps(found.provider)
+    gpsWatch.start(onDeviceFix, onDeviceError)
+    screenWake.on()
+  }
+
+  /** Au rechargement en mode « GPS de l'appareil » : reprend seul le suivi si l'autorisation est déjà accordée, sinon attend un clic. */
+  async function resumeDeviceGps(): Promise<void> {
+    if (isSim.value) return
+    const found: Detected = gpsProvider ? { provider: gpsProvider, status: 'ok' } : detectGeolocation()
+    if (found.provider === null) {
+      gps.status = found.status
+      return
+    }
+    const perm = await permissionState()
+    if (isSim.value) return // l'utilisateur est repassé en simulation pendant ce temps
+    if (perm === 'granted') enableDeviceGps()
+    else gps.status = perm === 'denied' ? 'denied' : 'prompt'
+  }
+
+  /**
+   * Choisit d'où vient la position. `provider` remplace la géolocalisation du navigateur (tests).
+   * Vers « appareil » : le simulateur s'arrête (pas de déplacement, ni de démo, ni de satellites simulés) ;
+   * vers « simulé » : le suivi s'arrête et le bateau reste à sa dernière position.
+   */
+  function setPositionSource(src: PositionSource, provider?: GeolocationLike): void {
+    if (provider) gpsProvider = provider
+    if (src === sim.source) {
+      if (src === 'device' && !gpsWatch) enableDeviceGps()
+      return
+    }
+    sim.source = src
+    ship.sog = 0
+    ship.hasCog = false
+    pendingGap = true
+    noFixSec = 0
+    if (src === 'device') {
+      sim.moving = false
+      sim.demo = false
+      sats.value = []
+      fixInfo.value = noFix()
+      rebaseDest = true
+      gps.accuracy = null
+      gps.altitude = null
+      gps.lastFixAt = 0
+      enableDeviceGps()
+    } else {
+      stopDeviceGps()
+      gps.status = 'off'
+      gps.message = ''
+      rebaseDest = false
+      sats.value = createSatellites()
+    }
+  }
+
+  /** Menu System > Reset > GPS : nouvelle acquisition du fix. */
+  function resetGps(): void {
+    sinceFix.value = 0
+    if (isSim.value) return
+    fixInfo.value = noFix()
+    enableDeviceGps()
   }
 
   function recordTrack(): void {
@@ -506,7 +683,8 @@ export const useDevice = defineStore('device', () => {
     setAlarm('SPEED ALARM!', s.alarmSpeed.on && ship.sog >= s.alarmSpeed.kn)
     setAlarm('TRIP ALARM!', s.alarmTrip.on && trip.value >= s.alarmTrip.nm)
     setAlarm('ODOMETER ALARM!', s.alarmOdo.on && odometer.value >= s.alarmOdo.nm)
-    setAlarm('NO DIFFERENTIAL SIGNAL!', s.alarmSbas && hasFix.value && !FIX_IS_DIFFERENTIAL(fixInfo.value.fix))
+    // le navigateur ne dit pas si la position est corrigée par SBAS : l'alarme n'a de sens que sur les satellites simulés
+    setAlarm('NO DIFFERENTIAL SIGNAL!', isSim.value && s.alarmSbas && hasFix.value && !FIX_IS_DIFFERENTIAL(fixInfo.value.fix))
     if (s.alarmTime.on) {
       const d = new Date(nowMs.value + (s.timeOffsetMin + (s.dst ? 60 : 0)) * 60000)
       const hhmm = d.getUTCHours() * 100 + d.getUTCMinutes()
@@ -522,7 +700,7 @@ export const useDevice = defineStore('device', () => {
       lastTimeAlarmMinute = -1
       setAlarm('TIME ALARM!', false)
     }
-    setAlarm('GPS NO FIX!', sinceFix.value > 45 && fixInfo.value.fix === '---' && !sim.demo)
+    setAlarm('GPS NO FIX!', isSim.value ? sinceFix.value > 45 && fixInfo.value.fix === '---' && !sim.demo : noFixSec > 45)
   }
 
   // ---------------------------------------------------------------- boucle de simulation (1 Hz)
@@ -615,23 +793,42 @@ export const useDevice = defineStore('device', () => {
     if (power.value === 'off') return
     sinceFix.value += power.value === 'on' ? 1 : 0
 
-    stepSatellites(sats.value, 1, tSec)
-    triggerRef(sats)
-    const fi = computeFix(sats.value, {
-      minElev: settings.svElev,
-      disabled: settings.disableSv,
-      sbas: settings.sbasMode === 'SBAS',
-      qzss: settings.qzssPositioning,
-      forced: sim.forcedFix,
-    })
-    // délai d'acquisition simulé : pas de fix pendant les premières secondes
-    if (sinceFix.value < 4 && sim.forcedFix === 'auto') fi.fix = '---'
-    fixInfo.value = fi
+    if (isSim.value) {
+      stepSatellites(sats.value, 1, tSec)
+      triggerRef(sats)
+      const fi = computeFix(sats.value, {
+        minElev: settings.svElev,
+        disabled: settings.disableSv,
+        sbas: settings.sbasMode === 'SBAS',
+        qzss: settings.qzssPositioning,
+        forced: sim.forcedFix,
+      })
+      // délai d'acquisition simulé : pas de fix pendant les premières secondes
+      if (sinceFix.value < 4 && sim.forcedFix === 'auto') fi.fix = '---'
+      fixInfo.value = fi
+    } else {
+      fixInfo.value = deviceFixInfo()
+      if (fixInfo.value.fix === '---') {
+        // l'alarme signale un fix PERDU : le compte ne court que si le suivi est actif et qu'une position exploitable a déjà été reçue. Refus,
+        // page en HTTP, attente d'un clic ou position trop vague (ordinateur de bureau) sont déjà dits par l'état du GPS : une alarme avalerait
+        // en plus la première touche pressée (GO TO, MARK…)
+        noFixSec = gpsWatch?.active && lastGood ? noFixSec + 1 : 0
+        // plus de position : le bateau est tenu pour arrêté, pas pour filant à sa dernière vitesse
+        ship.sog = 0
+        ship.hasCog = false
+        if (gps.status === 'tracking') gps.status = 'lost'
+      } else noFixSec = 0
+    }
 
     if (power.value !== 'on') return
 
     // mouvement du bateau
-    if (sim.moving || sim.demo) {
+    if (!isSim.value) {
+      // la position et la vitesse viennent de l'appareil (onDeviceFix) ; le parcours s'en déduit seconde par seconde
+      const dNm = ship.sog >= MIN_COG_SOG_KN ? ship.sog / 3600 : 0
+      trip.value += dNm
+      odometer.value += dNm
+    } else if (sim.moving || sim.demo) {
       let cog = sim.course
       const sp = sim.speed
       if (sim.courseMode === 'Auto') {
@@ -749,7 +946,7 @@ export const useDevice = defineStore('device', () => {
     const warnings: string[] = []
     let base = merge ? waypoints.value.slice() : []
     let incoming = list
-    const room = LIMITS.waypoints - base.length
+    const room = Math.max(0, LIMITS.waypoints - base.length)
     if (incoming.length > room) {
       warnings.push(`${incoming.length - room} waypoint(s) ignoré(s) (limite ${LIMITS.waypoints})`)
       incoming = incoming.slice(0, Math.max(0, room))
@@ -878,7 +1075,14 @@ export const useDevice = defineStore('device', () => {
       trip.value = c.trip
       odometer.value = c.odo
     }
+    if (!isSim.value) {
+      // rechargé en mode « GPS de l'appareil » : pas de satellites simulés, et pas de fix avant la première position reçue
+      sats.value = []
+      fixInfo.value = noFix()
+      ship.sog = 0
+    }
     ready.value = true
+    void resumeDeviceGps()
   }
 
   const saveSettings = debounce(() => void kvSet(DB_KEYS.settings, JSON.parse(JSON.stringify(settings))), 400)
@@ -938,6 +1142,7 @@ export const useDevice = defineStore('device', () => {
   /** Remet l'appareil à zéro (équivalent « Factory Reset » + rechargement du jeu de données par défaut). */
   async function factoryReset(reloadDefault = true): Promise<void> {
     await kvClear()
+    setPositionSource('sim') // arrête le suivi du GPS de l'appareil et rend les satellites simulés
     Object.assign(settings, defaultSettings())
     Object.assign(sim, defaultSim())
     routes.value = []
@@ -980,6 +1185,10 @@ export const useDevice = defineStore('device', () => {
     fix,
     hasFix,
     sinceFix,
+    gps,
+    isSim,
+    volts,
+    altitude,
     importWarnings,
     alarms,
     // dérivés
@@ -1020,6 +1229,10 @@ export const useDevice = defineStore('device', () => {
     reverseRoute,
     markMob,
     setShipPosition,
+    setPositionSource,
+    enableDeviceGps,
+    resumeDeviceGps,
+    resetGps,
     clearTrack,
     acknowledgeAlarms,
     start,

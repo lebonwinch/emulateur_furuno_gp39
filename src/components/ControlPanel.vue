@@ -2,7 +2,8 @@
   <div class="panel column q-gutter-y-md">
     <q-card flat bordered>
       <q-card-section>
-        <div class="text-overline">Simulation</div>
+        <div class="text-overline">Position</div>
+        <PositionSource class="q-mb-sm" />
         <q-btn
           color="primary"
           unelevated
@@ -76,6 +77,7 @@ import { formatLat, formatLon } from '@/gp39/format'
 import { centerOnShip } from '@/gp39/ui/plotter'
 import { fileHooks } from '@/gp39/ui/menus'
 import AboutPanel from './AboutPanel.vue'
+import PositionSource from './PositionSource.vue'
 import SymbolLegend from './SymbolLegend.vue'
 
 defineEmits<{ (e: 'position'): void; (e: 'editor'): void }>()

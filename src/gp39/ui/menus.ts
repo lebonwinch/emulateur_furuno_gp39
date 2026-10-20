@@ -1263,8 +1263,8 @@ function openDemoMenu(): void {
             onDone: (t) => {
               const v = parseCoord(t, isLat, fmt)
               if (v == null) return showToast('INVALID VALUE')
-              if (isLat) dev.setShipPosition(v, dev.ship.lon)
-              else dev.setShipPosition(dev.ship.lat, v)
+              const moved = isLat ? dev.setShipPosition(v, dev.ship.lon) : dev.setShipPosition(dev.ship.lat, v)
+              if (!moved) showToast('USING DEVICE GPS')
             },
           }),
       }
@@ -1274,7 +1274,11 @@ function openDemoMenu(): void {
         choice(
           onOff,
           () => bool(sm.demo),
-          (v) => (sm.demo = v === 'On'),
+          (v) => {
+            // la démo déplace un bateau simulé : elle reprend la main sur le GPS de l'appareil
+            if (v === 'On') dev.setPositionSource('sim')
+            sm.demo = v === 'On'
+          },
         ),
       ]),
       srow('Speed', [num('99', sm.speed, (n) => (sm.speed = n), 'kn')]),
@@ -1352,7 +1356,7 @@ function openResetMenu(): void {
   })
   settingsList('Menu >System >Reset', [16, 2, 10], () => [
     srow(`Trip (${Math.round(dev.trip)} NM)`, [ask('Trip', () => void (dev.trip = 0))]),
-    srow('GPS', [ask('GPS', () => void (dev.sinceFix = 0))]),
+    srow('GPS', [ask('GPS', () => dev.resetGps())]),
     srow('Menu Settings', [ask('Menu Settings', () => void Object.assign(dev.settings, defaultSettings()))]),
     srow('Factory Reset', [ask('all data', () => dev.factoryReset(true))]),
   ])

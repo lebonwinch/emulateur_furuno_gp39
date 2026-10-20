@@ -45,11 +45,43 @@ service worker exigent HTTPS (ou `localhost`).
 
   Dans un éditeur de champ (nom, latitude…), les caractères se tapent directement au clavier.
 
-- **Plotter** : le clic place le curseur, le glisser déplace la carte. ENT sur un waypoint ouvre _Goto / Move / Edit / Delete_,
-  GO TO avec le curseur crée un _Quick Point_, MARK enregistre un waypoint à la position du bateau, MARK maintenu enregistre un MOB.
-- **Position du bateau** (bouton « Position du bateau… ») : fenêtre avec carte (fond au choix, voir « Fonds de carte » ; zoom molette ou +/−). Le bateau se
-  **déplace en le faisant glisser** ; on peut aussi saisir une position, choisir un port, activer un déplacement simulé
-  (vitesse, cap, route circulaire), forcer l'état du fix GPS ou activer le mode Demo (« SIM »).
+- **Plotter** : le clic place le curseur, le glisser déplace la carte. ENT sur un waypoint ouvre _Goto / Move / Edit / Delete_ ;
+  **GO TO avec le curseur** ouvre ce même menu s'il est sur un waypoint (_Goto_ trace alors le trait bleu et passe en distance/cap), et sinon crée un
+  _Quick Point_ à l'endroit du curseur (manuel §5.1) ; sans curseur, GO TO ouvre le menu _Goto_ (QP, listes de waypoints et de routes). MARK enregistre un
+  waypoint à la position du bateau, MARK maintenu enregistre un MOB. Le Quick Point n'est jamais refusé, même si la mémoire de waypoints est pleine
+  (10 000 : il s'y ajoute, et chaque nouveau remplace le précédent) ; MARK et ENT sur la mer, eux, répondent « WAYPOINT MEMORY FULL » au lieu de ne rien faire.
+- **Source de la position** (panneau de commande, bloc « Position », et haut de la fenêtre « Position du bateau… ») : deux modes, au choix,
+  mémorisé d'une session à l'autre.
+  - **Simulée** (par défaut) : le bateau est placé et déplacé par vos soins. Fenêtre « Position du bateau… » avec carte (fond au choix, voir « Fonds
+    de carte » ; zoom molette ou +/−) : le bateau se **déplace en le faisant glisser** (ou par double-clic) ; on peut aussi saisir une position, choisir un
+    port, activer un déplacement simulé (vitesse, cap, route circulaire), forcer l'état du fix GPS ou activer le mode Demo (« SIM »). Les satellites de
+    l'écran Satellite monitor sont simulés.
+  - **GPS de l'appareil** : la position, la vitesse et le cap viennent de la **géolocalisation du navigateur** (puce GPS d'un téléphone ou d'une tablette ;
+    sur un ordinateur, le positionnement par Wi-Fi). Le navigateur demande l'autorisation au clic ; elle exige **HTTPS ou `localhost`**. Le bateau ne
+    peut plus être placé à la main (champs, ports, glisser et double-clic sont désactivés ; le menu System > Demo > Latitude/Longitude affiche « USING DEVICE
+    GPS ») ; la carte montre le disque d'incertitude de la position. Les réglages de simulation (déplacement, état du fix forcé) sont sans effet ; activer le
+    mode Demo (menu System > Demo > Mode > On) repasse en simulation. Comme le navigateur ne donne pas de satellites :
+    - **état du fix** d'après la précision annoncée : ≤ 50 m → **3D** (si l'altitude est fournie, sinon **2D**), 50 à 500 m → **DOP** (position approximative),
+      au-delà de 500 m (position par adresse IP, par exemple) → position ignorée, **pas de fix** ; plus de nouvelle position → pas de fix et vitesse nulle
+      (« Signal perdu ») : au bout de 5 s pour un GPS précis (≤ 50 m, une position par seconde), d'**1 min** pour une position approximative (Wi-Fi, adresse
+      IP : le navigateur ne la notifie que lorsqu'elle change, ce qui est rare sur un ordinateur de bureau), ou de 3 fois l'intervalle constaté entre les
+      positions s'il est plus long (5 min au plus) ; HDOP estimé d'après la précision ; écran Satellite monitor sans satellites (« DEVICE GPS — No satellite data »), altitude fournie
+      par l'appareil ou `--` ; tension d'alimentation `--` ;
+    - **SOG et COG** : ceux de l'appareil quand il les donne (mesure Doppler) ; sinon calculés d'après les déplacements, sur 4 à 30 s, à condition que
+      l'écart dépasse 1,5 fois la précision (un récepteur immobile dont la position « bouge » dans sa marge d'erreur reste à 0 nœud). SOG < 0,2 nœud tenue pour
+      nulle ; pas de COG sous 0,5 nœud ; trip et odomètre n'avancent qu'au-dessus de 0,5 nœud ;
+    - **trace et route** : une coupure est ouverte à la première position et à chaque saut de plus d'1 NM (veille de l'onglet, perte de signal) ; au premier
+      fix qui suit le passage en mode appareil, le tronçon de la route en cours repart de la position réelle (au simple rechargement de la page, il est conservé) ;
+    - **carte du plotter** : elle ne revient sur le bateau que s'il **sort de l'écran en avançant** ; une carte qu'on a fait défiler vers une cible de GO TO reste
+      où elle est (même si le GPS donne une position chaque seconde ; ENT/CNTR maintenu ramène le bateau au centre) ;
+    - **alarmes** : « GPS NO FIX! » quand un fix déjà obtenu est **perdu depuis plus de 45 s** (jamais s'il n'y a pas eu de fix : localisation refusée ou en
+      attente d'un clic, page en HTTP, position trop vague d'un ordinateur de bureau… l'état du GPS le dit déjà) ; comme sur le GP-39, la première touche pressée pendant une alarme ne fait que l'acquitter (GO TO, MARK… agissent
+      à la pression suivante) ; « NO DIFFERENTIAL SIGNAL! » n'est évaluée que sur les satellites simulés (le navigateur ne dit pas si la position est corrigée par SBAS) ;
+    - **au rechargement**, le suivi reprend seul si l'autorisation a déjà été accordée ; sinon l'état « En attente de votre autorisation » propose « Activer
+      la localisation » (un geste de l'utilisateur est nécessaire) ; refus, délai dépassé, position indisponible, navigateur sans géolocalisation ou page en
+      HTTP sont signalés avec leur remède et « Réessayer » ; l'écran reste allumé pendant le suivi (Screen Wake Lock, là où le navigateur le permet) ; le suivi
+      continue quand l'émulateur est « éteint » (BRILL), pour que le fix soit prêt à la remise sous tension.
+      Cette fonction ne s'appuie sur aucun service en ligne : la position ne quitte pas l'appareil.
 - **Fonds de carte** (fenêtre « Position ») : **OpenStreetMap**, **OpenSeaMap** (OpenStreetMap + marques nautiques), **Shom — cartes
   marines** (Carte littorale Shom/IGN), **Bathymétrie EMODnet** (relief, profondeurs et isobathes des mers d'Europe + marques
   OpenSeaMap) ou **sans fond**. Des couches Shom libres (balisage, épaves et obstructions, informations portuaires, dispositifs de
@@ -164,6 +196,10 @@ service worker exigent HTTPS (ou `localhost`).
   mode SCX-21, TDs Loran C / Decca, import GP-32, interface autre qu'anglaise.
 - Le format des **routes** dans le GPX exporté (`<rte>`/`<rtept>`) est une convention de l'émulateur : le manuel ne le documente
   pas (seuls les waypoints sont dans le format des fichiers du GP-39).
+- **GPS de l'appareil** : la position est celle que fournit le navigateur, sans satellites ni DOP réels (HDOP estimé) ; sur un ordinateur sans puce GPS, la
+  précision (souvent 20 m à plusieurs km) est celle du positionnement Wi-Fi ou par adresse IP, et les positions de plus de 500 m d'incertitude sont ignorées ;
+  les navigateurs suspendent la géolocalisation d'une page en arrière-plan ou d'un écran verrouillé (le suivi reprend au retour, avec une coupure dans la
+  trace) ; vérifié avec une fausse API de géolocalisation (tests et navigateur intégré), **pas encore sur un téléphone en mer**. Ce n'est pas un instrument de navigation.
 - Le service worker n'a pu être vérifié que par lecture du fichier généré (le navigateur intégré à l'outil de développement
   refuse l'enregistrement) : à contrôler une fois déployé en HTTPS.
 
@@ -172,7 +208,8 @@ service worker exigent HTTPS (ou `localhost`).
 ```
 src/gp39/            domaine pur (testé) : géodésie, GPX, symboles, formats, simulation, persistance
 src/gp39/ui/         touches → vues (menus, éditeurs, plotter) ; menus.ts = arborescence du manuel
-src/stores/device.ts état de l'appareil (Pinia) : waypoints, routes, traces, navigation, alarmes, boucle 1 Hz
+src/stores/device.ts état de l'appareil (Pinia) : waypoints, routes, traces, navigation, alarmes, boucle 1 Hz, source de la position (simulée / GPS de l'appareil)
+src/gp39/deviceGps.ts  GPS de l'appareil : position du navigateur → fix, HDOP, SOG/COG (Kinematics), suivi (DeviceGps), détection et autorisation ; screenWake.ts : écran maintenu allumé
 src/gp39/bsb/        cartes BSB : kap.ts (en-tête, RLE, index), georef.ts (calage), tiles.ts (choix des cartes selon le zoom, rendu), catalog.ts, engine.ts + bsbWorker.ts
 src/gp39/cm93/       cartes CM93 : decode.ts + cell.ts (cellule), dict.ts + attrs.ts (dictionnaires, attributs), scales.ts + plan.ts (échelles, cellules d'une tuile), prepare.ts + style.ts + draw.ts (dessin), tile.ts (quilt), engine.ts + cm93Worker.ts
 src/gp39/mbtiles/      cartes MBTiles : sqlite.ts (lecteur SQLite minimal), mbtiles.ts (tables, métadonnées, tuile), plan.ts (fichiers d'une tuile), render.ts, catalog.ts, engine.ts + mbtilesWorker.ts

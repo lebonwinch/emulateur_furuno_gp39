@@ -73,8 +73,13 @@ export function defaultSettings(): Settings {
   }
 }
 
+/** D'où vient la position : du simulateur, ou du GPS de l'appareil (géolocalisation du navigateur). */
+export type PositionSource = 'sim' | 'device'
+
 /** Configuration du simulateur (hors réglages « matériels » du GP-39). */
 export interface SimConfig {
+  /** source de la position ; en mode `device`, les autres réglages de simulation sont sans effet */
+  source: PositionSource
   /** le bateau avance selon SOG/COG */
   moving: boolean
   /** vitesse simulée (kn) */
@@ -94,6 +99,7 @@ export interface SimConfig {
 
 export function defaultSim(): SimConfig {
   return {
+    source: 'sim',
     moving: false,
     speed: 5,
     course: 90,

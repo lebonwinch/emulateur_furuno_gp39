@@ -27,6 +27,19 @@ export function inMap(x: number, y: number, margin = 0): boolean {
   )
 }
 
+/**
+ * Le bateau vient-il de sortir de la carte en avançant ? Alors il revient au centre de l'écran (manuel §2.3). S'il était déjà hors de la
+ * carte parce qu'on l'a fait défiler (vers une cible de GO TO, par exemple), la carte reste où elle est : sinon, avec un GPS qui donne une
+ * position chaque seconde, elle reviendrait sur le bateau avant qu'on ait pu placer le curseur.
+ */
+export function shipJustLeftMap(from: LatLon, to: LatLon): boolean {
+  const mer = plotterProjection()
+  const [x, y] = mer.toPx(to.lat, to.lon)
+  if (inMap(x, y, 6)) return false
+  const [fx, fy] = mer.toPx(from.lat, from.lon)
+  return inMap(fx, fy, 6)
+}
+
 export function centerOnShip(): void {
   const dev = useDevice()
   ui.center = { lat: dev.ship.lat, lon: dev.ship.lon }

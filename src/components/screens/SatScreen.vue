@@ -16,6 +16,8 @@
       </g>
     </svg>
 
+    <div v-if="!dev.isSim" class="devgps">DEVICE GPS<br />No satellite data</div>
+
     <div class="bars">
       <div v-for="r in rows" :key="r.prn" class="b">
         <span class="chip" :class="{ used: r.used }">{{ r.prn }}</span>
@@ -54,7 +56,7 @@ const plotted = computed(() =>
     }),
 )
 const dopText = computed(() => (dev.fixInfo.fix === '---' ? '--' : dev.fixInfo.hdop.toFixed(2)))
-const altText = computed(() => `${dev.sim.altitude.toFixed(1)} m`)
+const altText = computed(() => (dev.altitude === null ? '-- m' : `${dev.altitude.toFixed(1)} m`))
 </script>
 
 <style scoped lang="scss">
@@ -81,6 +83,13 @@ const altText = computed(() => `${dev.sim.altitude.toFixed(1)} m`)
   left: 12px;
   bottom: 6px;
   font-size: 18px;
+}
+.devgps {
+  position: absolute;
+  left: 302px;
+  top: 4px;
+  font-size: 17px;
+  line-height: 20px;
 }
 .page {
   position: absolute;

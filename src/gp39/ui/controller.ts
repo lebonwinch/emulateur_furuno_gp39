@@ -84,6 +84,13 @@ export function openZoom(): void {
 function gotoKey(): void {
   const dev = useDevice()
   if (dev.settings.display === MODE_PLOTTER && ui.cursor && Date.now() < ui.cursorUntil && !ui.moving) {
+    // curseur sur un waypoint : son menu contextuel (Goto / Move / Edit / Delete), comme avec ENT/CNTR ; ailleurs : Quick Point (manuel §5.1)
+    const picked = pickAtCursor()
+    if (picked?.type === 'wpt') {
+      showCursor()
+      openWaypointPopup(picked.id)
+      return
+    }
     dev.setQuickPoint(ui.cursor.lat, ui.cursor.lon)
     ui.cursor = null
     return
@@ -102,7 +109,7 @@ function markKey(long: boolean): void {
     showToast('NO POSITION FIX')
     return
   }
-  dev.addWaypointAtShip()
+  if (!dev.addWaypointAtShip()) showToast('WAYPOINT MEMORY FULL')
 }
 
 function plotterKey(key: KeyName, long: boolean, repeat: number): void {
@@ -135,7 +142,7 @@ function plotterKey(key: KeyName, long: boolean, repeat: number): void {
       }
       const p = pickAtCursor()
       if (!p) {
-        dev.addWaypoint({ lat: cur.lat, lon: cur.lon, comment: '' })
+        if (!dev.addWaypoint({ lat: cur.lat, lon: cur.lon, comment: '' })) showToast('WAYPOINT MEMORY FULL')
       } else if (p.type === 'wpt') openWaypointPopup(p.id)
       else if (p.type === 'ship') openShipPopup()
       else if (p.type === 'leg') openLegPopup()

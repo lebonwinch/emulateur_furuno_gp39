@@ -60,7 +60,17 @@ import { drawSprite, markSprite } from '@/gp39/sprites'
 import { PLOTTER_RANGES } from '@/gp39/types'
 import { useDevice } from '@/stores/device'
 import { ui } from '@/gp39/ui/state'
-import { centerOnShip, inMap, legPoints, MAP_CX, MAP_CY, plotterProjection, showCursor, zoomPlotter } from '@/gp39/ui/plotter'
+import {
+  centerOnShip,
+  inMap,
+  legPoints,
+  MAP_CX,
+  MAP_CY,
+  plotterProjection,
+  shipJustLeftMap,
+  showCursor,
+  zoomPlotter,
+} from '@/gp39/ui/plotter'
 
 const props = defineProps<{ scale: number }>()
 const rootEl = ref<HTMLElement | null>(null)
@@ -201,13 +211,12 @@ watch(
 onMounted(schedule)
 onBeforeUnmount(() => cancelAnimationFrame(raf))
 
-/** Quand le bateau sort de la carte, il revient au centre de l'écran (manuel §2.3). */
+/** Quand le bateau sort de la carte en avançant, il revient au centre de l'écran (manuel §2.3). */
 watch(
-  () => [dev.ship.lat, dev.ship.lon],
-  () => {
+  () => [dev.ship.lat, dev.ship.lon] as const,
+  ([lat, lon], [oldLat, oldLon]) => {
     if (ui.moving || (ui.cursor && Date.now() < ui.cursorUntil)) return
-    const [x, y] = plotterProjection().toPx(dev.ship.lat, dev.ship.lon)
-    if (!inMap(x, y, 6)) centerOnShip()
+    if (shipJustLeftMap({ lat: oldLat, lon: oldLon }, { lat, lon })) centerOnShip()
   },
 )
 

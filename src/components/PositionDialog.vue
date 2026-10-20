@@ -19,11 +19,23 @@
       <div class="body col row no-wrap">
         <div class="map-col col">
           <div ref="mapEl" class="map" />
-          <div class="map-hint"> Faites glisser le bateau ⛵ pour changer la position courante · molette ou +/− pour zoomer </div>
+          <div class="map-hint">
+            <template v-if="dev.isSim">
+              Faites glisser le bateau ⛵ pour changer la position courante · molette ou +/− pour zoomer
+            </template>
+            <template v-else> Position donnée par le GPS de l’appareil · molette ou +/− pour zoomer </template>
+          </div>
         </div>
 
         <q-scroll-area class="side">
           <div class="q-pa-md q-gutter-y-md">
+            <div>
+              <div class="text-overline">Source de la position</div>
+              <PositionSource detail />
+            </div>
+
+            <q-separator />
+
             <div>
               <div class="text-overline">Position</div>
               <div class="row q-col-gutter-sm">
@@ -35,6 +47,7 @@
                     type="number"
                     step="0.0001"
                     label="Latitude (°)"
+                    :readonly="!dev.isSim"
                     @keyup.enter="applyInputs"
                     @blur="applyInputs"
                   />
@@ -47,20 +60,21 @@
                     type="number"
                     step="0.0001"
                     label="Longitude (°)"
+                    :readonly="!dev.isSim"
                     @keyup.enter="applyInputs"
                     @blur="applyInputs"
                   />
                 </div>
               </div>
               <div class="text-caption text-grey-7 q-mt-xs mono">{{ dmText }}</div>
-              <div class="row q-gutter-xs q-mt-sm">
+              <div v-if="dev.isSim" class="row q-gutter-xs q-mt-sm">
                 <q-btn v-for="p in PRESETS" :key="p.name" dense no-caps size="sm" outline :label="p.name" @click="goTo(p.lat, p.lon)" />
               </div>
             </div>
 
-            <q-separator />
+            <q-separator v-if="dev.isSim" />
 
-            <div>
+            <div v-if="dev.isSim">
               <div class="text-overline">Déplacement simulé</div>
               <q-toggle v-model="dev.sim.moving" label="Le bateau avance" />
               <div class="text-caption q-mt-sm">Vitesse (SOG) : {{ dev.sim.speed.toFixed(1) }} kn</div>
@@ -74,9 +88,9 @@
               />
             </div>
 
-            <q-separator />
+            <q-separator v-if="dev.isSim" />
 
-            <div>
+            <div v-if="dev.isSim">
               <div class="text-overline">Récepteur GPS</div>
               <q-select v-model="dev.sim.forcedFix" dense outlined emit-value map-options :options="FIX_OPTIONS" label="État du fix" />
               <q-toggle v-model="dev.sim.demo" label="Mode Demo (SIM)" class="q-mt-sm" />
@@ -118,6 +132,7 @@ import { WaypointCanvasLayer } from '@/gp39/leafletMarks'
 import { formatLat, formatLon } from '@/gp39/format'
 import { centerOnShip } from '@/gp39/ui/plotter'
 import BaseMapPicker from './BaseMapPicker.vue'
+import PositionSource from './PositionSource.vue'
 import { readPref, useBaseMap, writePref } from './useBaseMap'
 
 const open = defineModel<boolean>({ default: false })
@@ -143,6 +158,8 @@ const FIX_OPTIONS = [
 const mapEl = ref<HTMLElement | null>(null)
 let map: L.Map | null = null
 let boat: L.Marker | null = null
+/** disque d'incertitude de la position du GPS de l'appareil */
+let accuracyCircle: L.Circle | null = null
 let wptLayer: WaypointCanvasLayer | null = null
 let dragging = false
 
@@ -183,6 +200,7 @@ function onShow(): void {
       zIndexOffset: 1000,
       title: 'Position courante : glisser pour déplacer',
     }).addTo(map)
+    applySource()
     boat.on('dragstart', () => (dragging = true))
     boat.on('drag', () => {
       const p = boat!.getLatLng()
@@ -194,7 +212,7 @@ function onShow(): void {
       setPos(p.lat, p.lng)
     })
     map.on('dblclick', (e: L.LeafletMouseEvent) => {
-      goTo(e.latlng.lat, e.latlng.lng)
+      if (dev.isSim) goTo(e.latlng.lat, e.latlng.lng)
     })
     map.doubleClickZoom.disable()
     refreshWaypoints()
@@ -210,9 +228,35 @@ function refreshWaypoints(): void {
   } else if (map.hasLayer(wptLayer)) map.removeLayer(wptLayer)
 }
 
+/** Selon la source : bateau déplaçable à la main (simulée) ou imposé par le GPS de l'appareil, avec son disque d'incertitude. */
+function applySource(): void {
+  if (!map || !boat) return
+  if (dev.isSim) boat.dragging?.enable()
+  else boat.dragging?.disable()
+  const acc = dev.gps.accuracy
+  if (!dev.isSim && dev.fix !== '---' && acc !== null) {
+    if (!accuracyCircle)
+      accuracyCircle = L.circle([dev.ship.lat, dev.ship.lon], {
+        radius: acc,
+        weight: 1,
+        color: '#1976d2',
+        fillOpacity: 0.12,
+        interactive: false,
+      }).addTo(map)
+    else accuracyCircle.setLatLng([dev.ship.lat, dev.ship.lon]).setRadius(acc)
+  } else if (accuracyCircle) {
+    accuracyCircle.remove()
+    accuracyCircle = null
+  }
+}
+
 /** Déplace le bateau : mise à jour immédiate de l'appareil, de la carte et des champs. */
 function setPos(lat: number, lon: number): void {
-  dev.setShipPosition(lat, lon, { jump: true })
+  if (!dev.setShipPosition(lat, lon, { jump: true })) {
+    // la position vient du GPS de l'appareil : le bateau revient où il est
+    boat?.setLatLng([dev.ship.lat, dev.ship.lon])
+    return
+  }
   centerOnShip()
   latInput.value = Number(dev.ship.lat.toFixed(6))
   lonInput.value = Number(dev.ship.lon.toFixed(6))
@@ -225,6 +269,7 @@ function goTo(lat: number, lon: number): void {
 }
 
 function applyInputs(): void {
+  if (!dev.isSim) return
   if (
     Number.isFinite(latInput.value) &&
     Number.isFinite(lonInput.value) &&
@@ -256,14 +301,17 @@ watch(
     latInput.value = Number(lat.toFixed(6))
     lonInput.value = Number(lon.toFixed(6))
     if (follow.value && !map.getBounds().pad(-0.2).contains([lat, lon])) map.panTo([lat, lon], { animate: true })
+    applySource()
   },
 )
+watch(() => [dev.isSim, dev.fix, dev.gps.accuracy] as const, applySource)
 watch(() => dev.wptVersion, refreshWaypoints)
 
 function onHide(): void {
   map?.remove()
   map = null
   boat = null
+  accuracyCircle = null
   wptLayer = null
   releaseBaseMap()
 }
