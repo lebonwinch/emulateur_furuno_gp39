@@ -32,8 +32,14 @@ interface ImportMetaEnv {
   readonly CoopAuth_Snenc?: string;
   readonly DB2INSTANCE?: string;
   readonly DriverData?: string;
-  readonly EFC_10536_1592913036?: number;
-  readonly EFC_10536_4126798990?: number;
+  readonly EFC_68672_1262719628?: number;
+  readonly EFC_68672_1592913036?: number;
+  readonly EFC_68672_2283032206?: number;
+  readonly EFC_68672_2775293581?: number;
+  readonly EFC_68672_3789132940?: number;
+  readonly EFC_68672_4126798990?: number;
+  readonly FPS_BROWSER_APP_PROFILE_STRING?: string;
+  readonly FPS_BROWSER_USER_PROFILE_STRING?: string;
   readonly HOME?: string;
   readonly HOMEDRIVE?: string;
   readonly HOMEPATH?: string;
