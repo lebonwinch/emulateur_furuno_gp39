@@ -136,6 +136,80 @@ describe('mémoire de waypoints pleine (10 000)', () => {
   })
 })
 
+describe('le Quick Point est temporaire', () => {
+  let dev: ReturnType<typeof fresh>
+  beforeEach(() => {
+    dev = fresh()
+  })
+  const setQp = (): void => {
+    cursorAt(dev.ship.lat + 0.01, dev.ship.lon)
+    press('goto')
+  }
+  const qps = (): number => dev.waypoints.filter((w) => w.qp).length
+
+  it('il reste tant qu’il est visé', () => {
+    setQp()
+    for (let i = 0; i < 5; i++) dev.tick()
+    expect(qps()).toBe(1)
+    expect(dev.dest?.kind).toBe('qp')
+  })
+
+  it('annuler la destination par son menu contextuel (Cancel Goto, Yes) le supprime de la liste', () => {
+    const before = dev.waypoints.length
+    setQp()
+    expect(dev.waypoints).toHaveLength(before + 1)
+    const qp = dev.waypoints.find((w) => w.qp)!
+    cursorAt(qp.lat, qp.lon)
+    press('ent') // menu contextuel du point visé
+    expect((topView() as SelectView).options).toEqual(['Cancel Goto'])
+    press('ent') // Cancel Goto → confirmation
+    press('up') // Yes
+    press('ent')
+    expect(dev.dest).toBeNull()
+    expect(qps()).toBe(0)
+    expect(dev.waypoints).toHaveLength(before)
+  })
+
+  it('cancelDest, ou une autre destination, le supprime aussi', () => {
+    setQp()
+    dev.cancelDest()
+    expect(qps()).toBe(0)
+
+    setQp()
+    const w = dev.addWaypoint({ lat: dev.ship.lat + 0.1, lon: dev.ship.lon, name: 'AUTRE' })!
+    dev.setDestWaypoint(w.id)
+    expect(qps()).toBe(0)
+    expect(dev.dest).toMatchObject({ kind: 'waypoint', wptId: w.id })
+  })
+
+  it('une route comme destination le supprime', () => {
+    setQp()
+    const a = dev.addWaypoint({ lat: 1, lon: 1, name: 'A' })!
+    const b = dev.addWaypoint({ lat: 1.1, lon: 1, name: 'B' })!
+    const r = dev.addRoute('R1')!
+    r.points.push({ wptId: a.id, skip: false }, { wptId: b.id, skip: false })
+    expect(dev.setDestRoute(r.no, 'Forward')).toBe(true)
+    expect(qps()).toBe(0)
+  })
+
+  it('un Quick Point laissé sans destination par une ancienne session disparaît au premier tour', () => {
+    dev.addWaypoint({ lat: dev.ship.lat, lon: dev.ship.lon, name: 'QP', qp: true })
+    expect(qps()).toBe(1)
+    dev.tick()
+    expect(qps()).toBe(0)
+  })
+
+  it('un point ordinaire n’est jamais touché, et la mémoire pleine retrouve sa place après annulation', () => {
+    dev.deleteAllWaypoints()
+    fillMemory(dev)
+    setQp()
+    expect(dev.waypoints).toHaveLength(LIMITS.waypoints + 1)
+    dev.cancelDest()
+    expect(dev.waypoints).toHaveLength(LIMITS.waypoints)
+    expect(dev.waypoints.every((w) => !w.qp)).toBe(true)
+  })
+})
+
 describe('menu Goto (sans curseur)', () => {
   it('l’option QP place le curseur sur le bateau pour viser ensuite (manuel §5.1, note 2)', () => {
     const dev = fresh()

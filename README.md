@@ -47,7 +47,8 @@ service worker exigent HTTPS (ou `localhost`).
 
 - **Plotter** : le clic place le curseur, le glisser déplace la carte. ENT sur un waypoint ouvre _Goto / Move / Edit / Delete_ ;
   **GO TO avec le curseur** ouvre ce même menu s'il est sur un waypoint (_Goto_ trace alors le trait bleu et passe en distance/cap), et sinon crée un
-  _Quick Point_ à l'endroit du curseur (manuel §5.1) ; sans curseur, GO TO ouvre le menu _Goto_ (QP, listes de waypoints et de routes). MARK enregistre un
+  _Quick Point_ à l'endroit du curseur (manuel §5.1) — un point **temporaire** : il disparaît de la liste dès qu'il n'est plus la destination (annulation par
+  son menu _Cancel Goto_, autre destination, route lancée ; le GP-39, lui, le garde jusqu'au QP suivant) ; sans curseur, GO TO ouvre le menu _Goto_ (QP, listes de waypoints et de routes). MARK enregistre un
   waypoint à la position du bateau, MARK maintenu enregistre un MOB. Le Quick Point n'est jamais refusé, même si la mémoire de waypoints est pleine
   (10 000 : il s'y ajoute, et chaque nouveau remplace le précédent) ; MARK et ENT sur la mer, eux, répondent « WAYPOINT MEMORY FULL » au lieu de ne rien faire.
 - **Source de la position** (panneau de commande, bloc « Position », et haut de la fenêtre « Position du bateau… ») : deux modes, au choix,

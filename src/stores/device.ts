@@ -300,6 +300,19 @@ export const useDevice = defineStore('device', () => {
     touchWaypoints()
   }
 
+  /**
+   * Le Quick Point est un point temporaire : il disparaît dès qu'il n'est plus la destination (annulation, autre destination, route
+   * terminée), et avec lui ceux que des sessions précédentes auraient laissés dans la liste. (Le GP-39 les garde jusqu'au QP suivant.)
+   */
+  function dropUnusedQuickPoint(): void {
+    const d = dest.value
+    const stale = new Set(waypoints.value.filter((w) => w.qp && !(d?.kind === 'qp' && d.wptId === w.id)).map((w) => w.id))
+    if (!stale.size) return
+    waypoints.value = waypoints.value.filter((w) => !stale.has(w.id))
+    for (const r of routes.value) r.points = r.points.filter((p) => !stale.has(p.wptId))
+    touchWaypoints()
+  }
+
   // ---------------------------------------------------------------- routes
   function routeByNo(no: number): Route | undefined {
     return routes.value.find((r) => r.no === no)
@@ -347,6 +360,7 @@ export const useDevice = defineStore('device', () => {
   function setDestWaypoint(id: number): void {
     if (!wptById.value.has(id)) return
     dest.value = { kind: 'waypoint', wptId: id, from: { lat: ship.lat, lon: ship.lon } }
+    dropUnusedQuickPoint()
   }
 
   function setDestRoute(no: number, direction: 'Forward' | 'Reverse'): boolean {
@@ -362,16 +376,19 @@ export const useDevice = defineStore('device', () => {
       direction,
       from: { lat: ship.lat, lon: ship.lon },
     }
+    dropUnusedQuickPoint()
     return true
   }
 
   function setDestMob(): void {
     if (!mob.value) return
     dest.value = { kind: 'mob', wptId: -1, from: { lat: ship.lat, lon: ship.lon } }
+    dropUnusedQuickPoint()
   }
 
   function cancelDest(): void {
     dest.value = null
+    dropUnusedQuickPoint()
   }
 
   /** Inverse le sens de la route en cours (manuel §5.3). */
@@ -854,6 +871,7 @@ export const useDevice = defineStore('device', () => {
     autoWaypoint()
     syncRouteTarget()
     if (dest.value && !destTarget.value) dest.value = null // point visé supprimé
+    dropUnusedQuickPoint() // arrivée en fin de route, destination remplacée ou annulée par un autre chemin
     evaluateAlarms() // avant checkArrival : l'alarme d'arrivée doit voir le point atteint
     checkArrival()
   }
@@ -1066,6 +1084,7 @@ export const useDevice = defineStore('device', () => {
     }
     dest.value = d ?? null
     mob.value = mb ?? null
+    dropUnusedQuickPoint() // un Quick Point resté dans la liste d'une session précédente, sans destination
     if (sh) {
       ship.lat = sh.lat
       ship.lon = sh.lon
