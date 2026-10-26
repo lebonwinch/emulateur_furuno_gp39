@@ -31,6 +31,7 @@
         </div>
         <div class="q-mt-sm column q-gutter-y-xs">
           <q-btn color="primary" unelevated dense no-caps icon="edit_location_alt" label="Éditeur de waypoints…" @click="$emit('editor')" />
+          <q-btn color="primary" unelevated dense no-caps icon="route" label="Éditeur de routes…" @click="$emit('routes')" />
           <q-btn outline dense no-caps icon="upload_file" label="Charger un fichier GPX…" @click="loadFile" />
           <q-btn outline dense no-caps icon="download" label="Exporter GP39_WptRte.gpx" @click="exportFile" />
           <q-btn outline dense no-caps icon="restart_alt" label="Recharger waypoints_GP39.gpx" @click="reloadDefault" />
@@ -80,7 +81,7 @@ import AboutPanel from './AboutPanel.vue'
 import PositionSource from './PositionSource.vue'
 import SymbolLegend from './SymbolLegend.vue'
 
-defineEmits<{ (e: 'position'): void; (e: 'editor'): void }>()
+defineEmits<{ (e: 'position'): void; (e: 'editor'): void; (e: 'routes'): void }>()
 
 const showLegend = ref(false)
 

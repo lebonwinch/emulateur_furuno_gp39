@@ -5,6 +5,7 @@ import { bearing, destinationPoint, distance, norm360 } from '@/gp39/geo'
 import { defaultSettings } from '@/gp39/defaults'
 import { formatCoord, formatOffset, type PosFormat } from '@/gp39/format'
 import { COLORS, COLOR_NAMES, markSvg } from '@/gp39/symbols'
+import { routeStats } from '@/gp39/routes'
 import { LIMITS, type Route, type Waypoint } from '@/gp39/types'
 import { useDevice } from '@/stores/device'
 import {
@@ -491,17 +492,10 @@ export function openWaypointForm(id: number | null, preset?: { lat: number; lon:
 
 // ---------------------------------------------------------------- Routes
 
+/** Longueur de la route (NM) : celle que montre aussi l'éditeur de routes (points « skip » exclus). */
 function routeLength(r: Route): number {
   const dev = useDevice()
-  let total = 0
-  let prev: Waypoint | undefined
-  for (const p of r.points) {
-    const w = dev.wptById.get(p.wptId)
-    if (!w) continue
-    if (prev) total += distance(prev, w, dev.settings.navigation)
-    prev = w
-  }
-  return total
+  return routeStats(r.points, dev.wptById, dev.settings.navigation).totalNm
 }
 
 export function openRouteList(sort: 'Alphabet' | 'Distance'): void {

@@ -18,6 +18,19 @@
 
       <div class="toolbar row items-center q-px-sm q-py-xs q-gutter-x-sm q-gutter-y-xs">
         <q-btn-toggle v-model="mode" dense no-caps unelevated toggle-color="primary" :options="modeOptions" />
+        <q-btn
+          dense
+          no-caps
+          :outline="!multi"
+          :unelevated="multi"
+          :color="multi ? 'primary' : 'grey-8'"
+          icon="library_add_check"
+          label="Multi"
+          :aria-pressed="multi"
+          @click="multi = !multi"
+        >
+          <q-tooltip>Ajouter à la sélection au lieu de la remplacer (équivaut à Ctrl, qui manque sur un téléphone)</q-tooltip>
+        </q-btn>
         <q-space />
         <span class="text-caption"
           >{{ selected.size }} sélectionné(s) · {{ visibleWaypoints.length }} affiché(s) sur {{ totalWaypoints }}</span
@@ -52,43 +65,7 @@
 
             <q-separator />
 
-            <div>
-              <div class="text-overline">Export</div>
-              <q-checkbox v-model="onlyVisible" dense label="Seulement les calques affichés" />
-              <div class="text-caption text-grey-7">
-                Sinon tous les waypoints de tous les calques. Avec cette case, une route n’est exportée que si tous ses points sont dans les
-                calques affichés.
-              </div>
-              <div class="text-body2 q-mt-sm">
-                Fichier exporté : <b>{{ exportCount.waypoints }}</b> waypoints · <b>{{ exportCount.routes }}</b> routes
-              </div>
-              <q-input
-                v-model="exportName"
-                dense
-                outlined
-                class="q-mt-sm"
-                label="Nom du fichier exporté"
-                suffix=".gpx"
-                maxlength="96"
-                :hint="
-                  isDeviceName
-                    ? 'Nom reconnu par le GP-39.'
-                    : `Enregistré sous « ${exportFile} ». Le GP-39 ne relit que ${DEFAULT_EXPORT_NAME}.gpx.`
-                "
-                @keyup.enter="exportAll"
-              />
-              <q-btn
-                color="primary"
-                unelevated
-                no-caps
-                dense
-                class="q-mt-sm"
-                icon="download"
-                label="Exporter"
-                :disable="!exportCount.waypoints && !exportCount.routes"
-                @click="exportAll"
-              />
-            </div>
+            <GpxExportPanel />
 
             <q-separator />
 
@@ -106,15 +83,15 @@ import { useQuasar } from 'quasar'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useDevice } from '@/stores/device'
-import { downloadTextFile } from '@/gp39/download'
-import { DEFAULT_EXPORT_NAME, gpxFileName } from '@/gp39/gpxFile'
-import { selectForExport, waypointsInBox } from '@/gp39/layers'
-import { WaypointCanvasLayer } from '@/gp39/leafletMarks'
+import { waypointsInBox } from '@/gp39/layers'
+import type { WaypointCanvasLayer } from '@/gp39/leafletMarks'
+import { afterBox, afterTap, DRAG_THRESHOLD_PX, pickTolerance, startsBox } from '@/gp39/selection'
 import { LIMITS, type Waypoint } from '@/gp39/types'
 import BaseMapPicker from './BaseMapPicker.vue'
 import EditorLayersPanel from './EditorLayersPanel.vue'
+import GpxExportPanel from './GpxExportPanel.vue'
 import WaypointForm from './WaypointForm.vue'
-import { useBaseMap } from './useBaseMap'
+import { useEditorMap, useVisibleWaypoints } from './useEditorMap'
 import { lastColor, lastSymbol } from './useLastStyle'
 
 const open = defineModel<boolean>({ default: false })
@@ -123,6 +100,10 @@ const dev = useDevice()
 
 type Mode = 'pan' | 'select' | 'add'
 const mode = ref<Mode>('pan')
+/** « Multi » : les toucher et rectangles s'ajoutent à la sélection (un téléphone n'a ni Ctrl ni Maj) */
+const multi = ref(false)
+/** type du dernier pointeur (souris, doigt, stylet) : tolérance de visée et textes d'aide */
+const pointerKind = ref('mouse')
 const modeOptions = [
   { label: 'Déplacer', value: 'pan', icon: 'pan_tool' },
   { label: 'Sélection', value: 'select', icon: 'highlight_alt' },
@@ -136,18 +117,8 @@ let marker: L.Marker | null = null
 let markerWptId = 0
 let suppressClickUntil = 0
 
-const { applyBaseMap, releaseBaseMap } = useBaseMap(() => map)
-
 // ---------------------------------------------------------------- données affichées
-const visibleWaypoints = computed<Waypoint[]>(() => {
-  void dev.wptVersion
-  const shown = new Set(dev.layers.filter((l) => l.visible).map((l) => l.id))
-  return dev.waypoints.filter((w) => !w.qp && w.layer !== undefined && shown.has(w.layer))
-})
-const totalWaypoints = computed(() => {
-  void dev.wptVersion
-  return [...dev.layerCounts.values()].reduce((a, b) => a + b, 0)
-})
+const { visibleWaypoints, totalWaypoints } = useVisibleWaypoints()
 
 // ---------------------------------------------------------------- sélection
 const NONE: ReadonlySet<number> = new Set()
@@ -161,10 +132,11 @@ function setSelection(ids: Iterable<number>): void {
 function clearSelection(): void {
   if (selected.value.size) selected.value = NONE
 }
-function toggleSelection(id: number): void {
-  const s = new Set(selected.value)
-  if (!s.delete(id)) s.add(id)
-  selected.value = s
+/** Remplace la sélection, sauf si elle ne change pas (évite de redessiner pour rien). */
+function applySelection(next: ReadonlySet<number>): void {
+  const cur = selected.value
+  if (next.size === cur.size && [...next].every((id) => cur.has(id))) return
+  selected.value = next
 }
 
 watch(visibleWaypoints, (list) => {
@@ -190,46 +162,41 @@ const layerInfo = (w: Waypoint): string => {
 const round7 = (v: number): number => Number(v.toFixed(7))
 const wrapLon = (v: number): number => ((((v + 180) % 360) + 360) % 360) - 180
 
+// carte, fond de carte, couche de waypoints et cadrage : communs aux éditeurs (voir useEditorMap)
+const editorMap = useEditorMap({
+  waypoints: () => visibleWaypoints.value,
+  // anneau de sélection dessiné par la couche, sauf pour un seul waypoint : le repère glissable en tient lieu
+  layer: { selected: () => (selected.value.size === 1 ? NONE : selected.value), showHidden: true, extra: layerInfo },
+})
+
 function onShow(): void {
   void nextTick(() => {
     if (!mapEl.value || map) return
-    // boxZoom désactivé : Maj + glisser trace ici le rectangle de sélection
-    map = L.map(mapEl.value, { zoomControl: true, preferCanvas: true, worldCopyJump: true, minZoom: 2, maxZoom: 19, boxZoom: false })
-    map.setView([dev.ship.lat, dev.ship.lon], 11)
-    applyBaseMap()
-    // anneau de sélection dessiné par la couche, sauf pour un seul waypoint : le repère glissable en tient lieu
-    wptLayer = new WaypointCanvasLayer(() => visibleWaypoints.value, {
-      selected: () => (selected.value.size === 1 ? NONE : selected.value),
-      showHidden: true,
-      extra: layerInfo,
-    })
-    wptLayer.addTo(map)
+    const m = editorMap.mount(mapEl.value)
+    map = m.map
+    wptLayer = m.layer
     map.on('click', onMapClick)
-    map.getContainer().addEventListener('mousedown', onMouseDown)
+    map.getContainer().addEventListener('pointerdown', onPointerDown)
     window.addEventListener('keydown', onKey, true)
     applyMode()
     if (visibleWaypoints.value.length) fitVisible()
     syncMarker()
-    setTimeout(() => map?.invalidateSize(), 150)
   })
 }
 
 function onHide(): void {
   window.removeEventListener('keydown', onKey, true)
-  map?.getContainer().removeEventListener('mousedown', onMouseDown)
+  map?.getContainer().removeEventListener('pointerdown', onPointerDown)
   marker = null
   wptLayer = null
-  map?.remove()
   map = null
-  releaseBaseMap()
+  editorMap.unmount()
   mode.value = 'pan'
+  multi.value = false
 }
 onBeforeUnmount(onHide)
 
-function fitWaypoints(list: readonly Waypoint[]): void {
-  if (!map || !list.length) return
-  map.fitBounds(L.latLngBounds(list.map((w) => [w.lat, w.lon] as [number, number])).pad(0.05), { maxZoom: 15 })
-}
+const fitWaypoints = (list: readonly Waypoint[]): void => editorMap.fit(list)
 const fitVisible = (): void => fitWaypoints(visibleWaypoints.value)
 function fitLayer(id: number): void {
   if (dev.layers.find((l) => l.id === id)?.visible === false) dev.setLayerVisible(id, true)
@@ -259,31 +226,44 @@ const hint = computed(() => {
     const name = dev.layers.find((l) => l.id === activeLayerId.value)?.name ?? dev.layers[0]?.name ?? 'Nouveaux waypoints'
     return `Cliquer sur la carte pour créer un waypoint dans « ${name} » · Échap : annuler`
   }
-  if (mode.value === 'select') return 'Glisser pour tracer un rectangle de sélection · Ctrl : ajouter à la sélection · Suppr : supprimer'
-  return 'Cliquer un waypoint pour le sélectionner (Ctrl : ajouter) · Maj + glisser : rectangle de sélection · molette : zoom'
+  const touch = pointerKind.value === 'touch' || $q.platform.has.touch
+  if (mode.value === 'select') {
+    return touch
+      ? 'Glisser un doigt pour tracer un rectangle · Multi : ajouter à la sélection · deux doigts : déplacer / zoomer la carte'
+      : 'Glisser pour tracer un rectangle de sélection · Ctrl ou Multi : ajouter à la sélection · Suppr : supprimer'
+  }
+  return touch
+    ? 'Toucher un waypoint pour le sélectionner · Multi : en ajouter · mode Sélection : rectangle'
+    : 'Cliquer un waypoint pour le sélectionner (Ctrl ou Multi : ajouter) · Maj + glisser : rectangle de sélection · molette : zoom'
 })
 
 // ---------------------------------------------------------------- clic et rectangle de sélection
 function onMapClick(e: L.LeafletMouseEvent): void {
   if (performance.now() < suppressClickUntil) return // fin d'un rectangle : le clic qui suit ne doit pas vider la sélection
   if (mode.value === 'add') return createAt(e.latlng)
-  const hit = wptLayer?.pick(e.containerPoint)
+  const hit = wptLayer?.pick(e.containerPoint, pickTolerance(pointerKind.value))
   const o = e.originalEvent
-  const additive = o.ctrlKey || o.metaKey || o.shiftKey
-  if (hit) {
-    if (additive) toggleSelection(hit.id)
-    else setSelection([hit.id])
-  } else if (!additive) clearSelection()
+  applySelection(afterTap(selected.value, hit?.id ?? null, o.ctrlKey || o.metaKey || o.shiftKey || multi.value))
 }
 
-function onMouseDown(ev: MouseEvent): void {
+/**
+ * Rectangle de sélection, aux événements « pointeur » : souris, doigt et stylet (les événements souris n'existent pas pour un glissement au
+ * doigt). Un second doigt (pincement) abandonne le rectangle et laisse Leaflet zoomer ; l'appui qui ne bouge presque pas reste un toucher.
+ */
+function onPointerDown(ev: PointerEvent): void {
+  pointerKind.value = ev.pointerType
   const m = map
-  if (!m || ev.button !== 0 || mode.value === 'add') return
-  if (mode.value !== 'select' && !ev.shiftKey) return
+  if (!m || !ev.isPrimary || ev.button !== 0 || !startsBox(mode.value, ev.pointerType, ev.shiftKey)) return
   if ((ev.target as HTMLElement).closest('.leaflet-control, .leaflet-marker-icon')) return
   ev.preventDefault()
+  const el = m.getContainer()
+  try {
+    el.setPointerCapture(ev.pointerId) // le doigt peut sortir de la carte sans que le rectangle se perde
+  } catch {
+    /* pointeur déjà relâché */
+  }
   const start = m.mouseEventToContainerPoint(ev)
-  const rect = L.DomUtil.create('div', 'wpe-sel-rect', m.getContainer())
+  const rect = L.DomUtil.create('div', 'wpe-sel-rect', el)
   let moved = false
   const place = (p: L.Point): void => {
     rect.style.left = `${Math.min(start.x, p.x)}px`
@@ -291,23 +271,49 @@ function onMouseDown(ev: MouseEvent): void {
     rect.style.width = `${Math.abs(p.x - start.x)}px`
     rect.style.height = `${Math.abs(p.y - start.y)}px`
   }
-  const onMove = (e: MouseEvent): void => {
+  const onMove = (e: PointerEvent): void => {
+    if (e.pointerId !== ev.pointerId) return
     const p = m.mouseEventToContainerPoint(e)
-    if (Math.abs(p.x - start.x) > 3 || Math.abs(p.y - start.y) > 3) moved = true
-    place(p)
+    if (Math.abs(p.x - start.x) > DRAG_THRESHOLD_PX || Math.abs(p.y - start.y) > DRAG_THRESHOLD_PX) moved = true
+    if (moved) place(p)
   }
-  const onUp = (e: MouseEvent): void => {
-    window.removeEventListener('mousemove', onMove)
+  const stop = (): void => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onCancel)
+    window.removeEventListener('pointerdown', onOther, true)
+    try {
+      el.releasePointerCapture(ev.pointerId)
+    } catch {
+      /* déjà relâché */
+    }
     rect.remove()
+  }
+  const onUp = (e: PointerEvent): void => {
+    if (e.pointerId !== ev.pointerId) return
+    stop()
     if (!moved || map !== m) return
     suppressClickUntil = performance.now() + 80
     const b = L.latLngBounds(m.containerPointToLatLng(start), m.containerPointToLatLng(m.mouseEventToContainerPoint(e)))
     const hits = waypointsInBox(visibleWaypoints.value, { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() })
-    const ids = hits.map((w) => w.id)
-    setSelection(e.ctrlKey || e.metaKey ? [...selected.value, ...ids] : ids)
+    applySelection(
+      afterBox(
+        selected.value,
+        hits.map((w) => w.id),
+        e.ctrlKey || e.metaKey || multi.value,
+      ),
+    )
   }
-  window.addEventListener('mousemove', onMove)
-  window.addEventListener('mouseup', onUp, { once: true })
+  const onCancel = (e: PointerEvent): void => {
+    if (e.pointerId === ev.pointerId) stop()
+  }
+  const onOther = (e: PointerEvent): void => {
+    if (e.pointerId !== ev.pointerId) stop() // deuxième doigt : pincement, pas un rectangle
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+  window.addEventListener('pointercancel', onCancel)
+  window.addEventListener('pointerdown', onOther, true)
 }
 
 // ---------------------------------------------------------------- repère glissable (un seul waypoint sélectionné)
@@ -403,30 +409,6 @@ function onKey(e: KeyboardEvent): void {
     requestDelete()
   }
 }
-
-// ---------------------------------------------------------------- export
-const exportName = ref(DEFAULT_EXPORT_NAME)
-const onlyVisible = ref(false)
-const exportFile = computed(() => gpxFileName(exportName.value))
-const isDeviceName = computed(() => exportFile.value === `${DEFAULT_EXPORT_NAME}.gpx`)
-const exportLayers = computed<ReadonlySet<number> | null>(() =>
-  onlyVisible.value ? new Set(dev.layers.filter((l) => l.visible).map((l) => l.id)) : null,
-)
-const exportCount = computed(() => {
-  void dev.wptVersion
-  const s = selectForExport(dev.waypoints, dev.routes, exportLayers.value)
-  return { waypoints: s.waypoints.length, routes: s.routes.length }
-})
-
-function exportAll(): void {
-  if (!exportCount.value.waypoints && !exportCount.value.routes) return
-  downloadTextFile(exportFile.value, dev.exportGpx(exportLayers.value))
-  $q.notify({
-    type: 'positive',
-    message: `${exportFile.value} exporté (${exportCount.value.waypoints} waypoints, ${exportCount.value.routes} routes)`,
-    timeout: 3500,
-  })
-}
 </script>
 
 <style lang="scss">
@@ -455,6 +437,11 @@ function exportAll(): void {
   .map.map--select,
   .map.map--select .leaflet-interactive {
     cursor: crosshair !important;
+  }
+  /* mode Sélection : le glisser au doigt trace le rectangle, il ne doit être ni défilement de page ni pincement du navigateur
+     (sans cela le navigateur envoie pointercancel dès le début du geste) ; Leaflet garde le pincement à deux doigts */
+  .map.map--select {
+    touch-action: none !important;
   }
   .map-hint {
     position: absolute;

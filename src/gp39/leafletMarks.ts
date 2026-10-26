@@ -139,6 +139,19 @@ export class WaypointCanvasLayer extends L.Layer {
     return best?.w ?? null
   }
 
+  /**
+   * Tous les waypoints dessinés à `tolerance` px au plus d'un point de la carte, le plus utile d'abord : le plus proche, un waypoint nommé
+   * l'emportant sur un anonyme de 3 px plus près (un balisage et son feu sans nom sont souvent au même endroit).
+   */
+  pickAll(point: L.Point, tolerance = 10): Waypoint[] {
+    const hits: { w: Waypoint; key: number }[] = []
+    for (const p of this.placed) {
+      const d = Math.hypot(p.x - point.x, p.y - point.y)
+      if (d <= tolerance) hits.push({ w: p.w, key: d + (p.w.name ? 0 : 3) })
+    }
+    return hits.sort((a, b) => a.key - b.key).map((h) => h.w)
+  }
+
   private hideTip = (): void => {
     if (this.tip && this.map) this.map.removeLayer(this.tip)
     this.tip = null

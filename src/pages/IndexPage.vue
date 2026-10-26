@@ -4,10 +4,11 @@
       <GP39Device />
     </div>
     <div class="side-col">
-      <ControlPanel @position="showPosition = true" @editor="showEditor = true" />
+      <ControlPanel @position="showPosition = true" @editor="showEditor = true" @routes="showRoutes = true" />
     </div>
     <PositionDialog v-model="showPosition" />
     <WaypointEditorDialog v-model="showEditor" />
+    <RouteEditorDialog v-model="showRoutes" />
   </q-page>
 </template>
 
@@ -16,10 +17,12 @@ import { ref } from 'vue'
 import GP39Device from '@/components/GP39Device.vue'
 import ControlPanel from '@/components/ControlPanel.vue'
 import PositionDialog from '@/components/PositionDialog.vue'
+import RouteEditorDialog from '@/components/RouteEditorDialog.vue'
 import WaypointEditorDialog from '@/components/WaypointEditorDialog.vue'
 
 const showPosition = ref(false)
 const showEditor = ref(false)
+const showRoutes = ref(false)
 </script>
 
 <style scoped lang="scss">

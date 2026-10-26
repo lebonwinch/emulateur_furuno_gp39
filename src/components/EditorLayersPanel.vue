@@ -80,7 +80,7 @@
 import { ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { useDevice } from '@/stores/device'
-import { MAX_GPX_BYTES } from '@/gp39/gpxFile'
+import { gpxFilesOf, useGpxImport } from './useGpxImport'
 
 /** Calque actif : reçoit les waypoints créés dans l'éditeur. */
 const active = defineModel<number | null>({ default: null })
@@ -92,43 +92,14 @@ const dev = useDevice()
 const fileInput = ref<HTMLInputElement | null>(null)
 const skipDuplicates = ref(true)
 
-/** Importe les fichiers un par un : chacun devient un calque (sauf s'il n'apporte aucun waypoint). */
-async function addFiles(files: File[]): Promise<void> {
-  if (!files.length) return
-  const problems: string[] = []
-  const warnings: string[] = []
-  let waypoints = 0
-  let layers = 0
-  let lastLayer: number | null = null
-  for (const f of files) {
-    if (f.size > MAX_GPX_BYTES) {
-      problems.push(`${f.name} : fichier trop gros (${Math.round(MAX_GPX_BYTES / 1024 / 1024)} Mo au maximum)`)
-      continue
-    }
-    const r = dev.importGpx(await f.text(), 'merge', f.name, { skipDuplicates: skipDuplicates.value })
-    if (r.layerId === null) {
-      problems.push(`${f.name} : aucun waypoint importé${r.warnings.length ? ` (${r.warnings[0]})` : ''}`)
-      continue
-    }
-    waypoints += r.waypoints
-    layers++
-    lastLayer = r.layerId
-    warnings.push(...r.warnings.filter((w) => !w.includes('sans <name>')).map((w) => `${f.name} : ${w}`))
-  }
-  if (problems.length) {
-    $q.notify({ type: 'warning', message: `${problems.length} fichier(s) non importé(s)`, caption: problems.join(' · '), timeout: 6000 })
-  }
-  if (layers) {
-    $q.notify({
-      type: warnings.length ? 'warning' : 'positive',
-      message: `${waypoints} waypoints importés dans ${layers} calque(s)`,
-      ...(warnings.length ? { caption: warnings.join(' · ') } : {}),
-      timeout: 4500,
-    })
-    if (lastLayer !== null) {
-      active.value = lastLayer
-      emit('fit', lastLayer)
-    }
+// import commun aux éditeurs : chaque fichier devient un calque (s'il apporte des waypoints), ses routes sont reconstituées
+const { addFiles } = useGpxImport(() => skipDuplicates.value)
+
+async function importFiles(files: File[]): Promise<void> {
+  const r = await addFiles(files)
+  if (r.lastLayer !== null) {
+    active.value = r.lastLayer
+    emit('fit', r.lastLayer)
   }
 }
 
@@ -136,12 +107,12 @@ async function onPick(ev: Event): Promise<void> {
   const input = ev.target as HTMLInputElement
   const files = Array.from(input.files ?? [])
   input.value = ''
-  await addFiles(files)
+  await importFiles(files)
 }
 
 /** `.stop` : le dépôt n'ouvre pas aussi la fenêtre « Charger » du panneau de commande. */
 async function onDrop(e: DragEvent): Promise<void> {
-  await addFiles(Array.from(e.dataTransfer?.files ?? []).filter((f) => f.name.toLowerCase().endsWith('.gpx') || f.type.includes('xml')))
+  await importFiles(gpxFilesOf(e))
 }
 
 function newLayer(): void {
