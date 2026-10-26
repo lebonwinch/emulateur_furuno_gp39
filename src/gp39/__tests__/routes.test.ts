@@ -1,4 +1,7 @@
 // Éditeur de routes : noms et commentaires du GP-39, points d'une route, longueurs, contrôles, export GPX et enregistrement.
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useDevice } from '@/stores/device'
@@ -425,5 +428,18 @@ describe('enregistrement d’une route dans l’appareil', () => {
     expect(dev.routes[0]).toMatchObject({ name: 'MA ROU', comment: 'RETOUR' })
     expect(dev.routes[0]!.points.map((p) => dev.wptById.get(p.wptId)!.name)).toEqual(['P1', 'P3'])
     expect(r.warnings.join(' ')).toContain('renommée')
+  })
+})
+
+describe('éditeur de routes : liste vide', () => {
+  it('propose le bouton « Créer une nouvelle route » sous le texte « Aucune route »', () => {
+    const root = fileURLToPath(new URL('../../../', import.meta.url))
+    const src = readFileSync(join(root, 'src/components/RouteEditorDialog.vue'), 'utf8').replace(/\r\n/g, '\n')
+    const empty = src.slice(src.indexOf('data-testid="no-route"'))
+    const text = empty.indexOf('Aucune route.')
+    const btn = empty.indexOf('data-testid="new-route-empty"')
+    expect(text).toBeGreaterThan(-1)
+    expect(btn).toBeGreaterThan(text)
+    expect(empty.slice(btn, btn + 80)).toContain('@click="startNew()"')
   })
 })

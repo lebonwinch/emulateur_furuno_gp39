@@ -43,7 +43,12 @@ service worker exigent HTTPS (ou `localhost`).
   | `B` (maintenu 3 s)              | BRILL / marche-arrêt            |
   | `+` `−`, molette sur l'écran    | zoom du plotter (0,02 → 320 NM) |
 
-  Dans un éditeur de champ (nom, latitude…), les caractères se tapent directement au clavier.
+  Dans un éditeur de champ (nom, latitude…), les caractères se tapent directement au clavier. Cette liste est aussi dans la fenêtre **« Aide… »** du panneau de
+  commande (onglet « Raccourcis clavier »).
+
+- **Aide et mentions** (bas du panneau de commande) : **« Aide… »** ouvre une fenêtre à deux onglets, « Légende des symboles » (règles `GP39Symbol` / `FECColor`
+  appliquées, avec le nombre de waypoints de chaque code) et « Raccourcis clavier » ; **« À propos et licences… »** ouvre la fenêtre des mentions légales (licence,
+  code source, crédits des données et des composants).
 
 - **Plotter** : le clic place le curseur, le glisser déplace la carte. ENT sur un waypoint ouvre _Goto / Move / Edit / Delete_ ;
   **GO TO avec le curseur** ouvre ce même menu s'il est sur un waypoint (_Goto_ trace alors le trait bleu et passe en distance/cap), et sinon crée un
@@ -199,7 +204,7 @@ service worker exigent HTTPS (ou `localhost`).
     caractères de l'appareil), `<cmt>` est toujours écrit (vide au besoin), une route est limitée à 30 points, il n'y a ni `<number>` ni skip : **les points
     « skip » ne sont pas exportés** (le contrôle le signale). Avant l'export, un contrôle signale ce qui empêcherait l'appareil de relire une route (waypoint sans
     nom, disparu, nom porté par plusieurs waypoints, plus de 100 routes…) et demande confirmation.
-- **Symboles** : le bouton « Légende des symboles… » affiche les règles `GP39Symbol` / `FECColor` appliquées, avec le nombre de
+- **Symboles** : l'onglet « Légende des symboles » de la fenêtre « Aide… » affiche les règles `GP39Symbol` / `FECColor` appliquées, avec le nombre de
   waypoints de chaque code dans le fichier chargé. Sur la carte de la fenêtre « Position », les waypoints gardent leur pictogramme et
   leur couleur ; survoler un point affiche son nom, son commentaire et ses codes.
 - **Données** : chargement d'un GPX (bouton ou glisser-déposer), export `GP39_WptRte.gpx` (le seul nom que le GP-39 sait relire),
@@ -257,11 +262,11 @@ src/gp39/mbtiles/      cartes MBTiles : sqlite.ts (lecteur SQLite minimal), mbti
 src/gp39/library.ts  dossier de cartes : parcours, reconnaissance automatique du format (BSB / CM93) ; tileQueue.ts : file des tuiles ; workerPool.ts : pool de Workers ; tileCompose.ts + chartsLayer.ts : superposition des formats, couche Leaflet commune
 src/gp39/layers.ts   calques et outils de l'éditeur (rattachement, rectangle de sélection, doublons, contenu d'un export) ; gpxFile.ts : nom du fichier exporté
 src/gp39/routes.ts   routes : noms et commentaires du GP-39, points (ajout, ordre, skip), longueurs, contrôles et rapport avant export ; charset.ts : jeux de caractères de l'appareil ; selection.ts : règles de sélection de l'éditeur de waypoints
-src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtres « Position », « Éditeur de waypoints » et « Éditeur de routes » (RouteEditorDialog.vue), panneau de contrôle ; useEditorMap / useGpxImport / GpxExportPanel : briques communes aux deux éditeurs
+src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtres « Position », « Éditeur de waypoints » et « Éditeur de routes » (RouteEditorDialog.vue), « Aide » à deux onglets (HelpDialog.vue : SymbolLegendPanel.vue, KeyboardShortcuts.vue) et « À propos et licences » (AboutDialog.vue : AboutPanel.vue), panneau de contrôle ; useEditorMap / useGpxImport / GpxExportPanel : briques communes aux deux éditeurs
 public/data/         waypoints_GP39.gpx (jeu de données chargé au premier lancement ; citation du Shom dans ses métadonnées GPX)
 public/legal/        LICENSE et THIRD_PARTY_NOTICES.md servis avec l'application (copies générées par `npm run notices`)
 scripts/notices.mjs  génère THIRD_PARTY_NOTICES.md (avis et textes de licence des composants embarqués)
-src/gp39/about.ts    identité, licence et crédits (écran « À propos et licences », THIRD_PARTY_NOTICES.md, tests)
+src/gp39/about.ts    identité, licence et crédits (fenêtre « À propos et licences », THIRD_PARTY_NOTICES.md, tests)
 LICENSE              GNU General Public License version 3
 THIRD_PARTY_NOTICES.md  composants tiers, données, services et textes de licence (fichier généré)
 ```
@@ -279,7 +284,7 @@ publiée par la Free Software Foundation, soit la **version 3** de la licence, s
 pas même celle de sa valeur marchande ni de son adéquation à un usage particulier.
 
 - **Code source** : toute personne qui reçoit l'application (servie sur le web, installée comme PWA) doit pouvoir obtenir le code source
-  correspondant ; l'écran « À propos et licences » du panneau de commande renvoie au dépôt. Qui publie une version modifiée doit en faire de même.
+  correspondant ; la fenêtre « À propos et licences… » du panneau de commande renvoie au dépôt. Qui publie une version modifiée doit en faire de même.
 - **Composants tiers** : [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) (copie servie avec l'application dans `legal/`) donne, pour chaque
   composant embarqué (Vue, Quasar, Pinia, Vue Router, Leaflet, geomagnetism, polices Roboto / Roboto Condensed / VT323, icônes Material, workbox…),
   sa version, sa licence et son texte. Tous sont compatibles avec la GPL-3.0-or-later (MIT, BSD, Apache-2.0, SIL OFL). Le fichier est généré :
@@ -292,7 +297,7 @@ pas même celle de sa valeur marchande ni de son adéquation à un usage particu
 - **Données livrées** — `public/data/waypoints_GP39.gpx` : 2 252 balises extraites du jeu « Balisage maritime (aides à la navigation) » du Shom,
   filtrées et converties au format GPX, symboles et couleurs GP-39 ajoutés. Licence Ouverte Etalab 2.0 ; citation obligatoire :
   **« Shom, 2026. https://dx.doi.org/10.17183/DOI_BALISAGE_MARITIME »**. Ces données ne doivent pas servir à la navigation. La citation figure dans
-  les métadonnées du fichier GPX et dans l'écran « À propos et licences ».
+  les métadonnées du fichier GPX et dans la fenêtre « À propos et licences ».
 - **Fonds de carte en ligne** (chargés par le navigateur de l'utilisateur, jamais copiés ni mis en cache par l'application) : OpenStreetMap (ODbL,
   [politique d'usage des tuiles](https://operations.osmfoundation.org/policies/tiles/) à respecter : usage léger, attribution visible),
   OpenSeaMap (données ODbL, tuiles CC BY-SA 2.0), Géoplateforme de l'IGN ([CGU](https://cartes.gouv.fr/cgu) ; licence propre à chaque jeu de données),

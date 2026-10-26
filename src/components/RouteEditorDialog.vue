@@ -311,9 +311,22 @@
                     </q-item-section>
                   </q-item>
                 </q-list>
-                <div v-else class="text-caption text-grey-7">
-                  Aucune route. « Créer une nouvelle route », ou importez un fichier GPX qui en contient : elles sont reconstituées à partir
-                  des noms de waypoints.
+                <div v-else data-testid="no-route">
+                  <div class="text-caption text-grey-7">
+                    Aucune route. « Créer une nouvelle route », ou importez un fichier GPX qui en contient : elles sont reconstituées à
+                    partir des noms de waypoints.
+                  </div>
+                  <q-btn
+                    class="q-mt-sm"
+                    color="primary"
+                    unelevated
+                    dense
+                    no-caps
+                    icon="add_road"
+                    label="Créer une nouvelle route"
+                    data-testid="new-route-empty"
+                    @click="startNew()"
+                  />
                 </div>
               </div>
 

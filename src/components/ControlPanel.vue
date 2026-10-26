@@ -35,36 +35,17 @@
           <q-btn outline dense no-caps icon="upload_file" label="Charger un fichier GPX…" @click="loadFile" />
           <q-btn outline dense no-caps icon="download" label="Exporter GP39_WptRte.gpx" @click="exportFile" />
           <q-btn outline dense no-caps icon="restart_alt" label="Recharger waypoints_GP39.gpx" @click="reloadDefault" />
-          <q-btn outline dense no-caps icon="category" label="Légende des symboles…" @click="showLegend = true" />
         </div>
       </q-card-section>
     </q-card>
 
-    <q-expansion-item dense dense-toggle label="Raccourcis clavier" icon="keyboard" class="rounded-borders bordered-card">
-      <q-card flat>
-        <q-card-section class="text-caption keys">
-          <div><kbd>↑ ↓ ← →</kbd> CursorPad <kbd>Home PgUp End PgDn</kbd> diagonales</div>
-          <div><kbd>Entrée</kbd> ENT/CNTR (maintenu : centrer le bateau)</div>
-          <div><kbd>M</kbd> / <kbd>Échap</kbd> MENU</div>
-          <div><kbd>D</kbd> DISP (maintenu : sens inverse)</div>
-          <div><kbd>G</kbd> GO TO</div>
-          <div><kbd>Espace</kbd> MARK (maintenu : MOB)</div>
-          <div><kbd>B</kbd> BRILL (maintenu 3 s : arrêt)</div>
-          <div><kbd>+</kbd> <kbd>−</kbd> zoom du plotter · molette sur l’écran</div>
-          <div>Dans un champ de saisie : taper directement les caractères.</div>
-        </q-card-section>
-      </q-card>
-    </q-expansion-item>
+    <div class="column q-gutter-y-xs">
+      <q-btn outline dense no-caps icon="help_outline" label="Aide…" data-testid="open-help" @click="showHelp = true" />
+      <q-btn outline dense no-caps icon="info" label="À propos et licences…" data-testid="open-about" @click="showAbout = true" />
+    </div>
 
-    <q-expansion-item dense dense-toggle label="À propos et licences" icon="info" class="rounded-borders bordered-card">
-      <q-card flat>
-        <q-card-section>
-          <AboutPanel />
-        </q-card-section>
-      </q-card>
-    </q-expansion-item>
-
-    <SymbolLegend v-model="showLegend" />
+    <HelpDialog v-model="showHelp" />
+    <AboutDialog v-model="showAbout" />
     <input ref="fileInput" type="file" accept=".gpx,application/gpx+xml,text/xml,application/xml" class="hidden" @change="onFile" />
   </div>
 </template>
@@ -77,13 +58,14 @@ import { downloadTextFile } from '@/gp39/download'
 import { formatLat, formatLon } from '@/gp39/format'
 import { centerOnShip } from '@/gp39/ui/plotter'
 import { fileHooks } from '@/gp39/ui/menus'
-import AboutPanel from './AboutPanel.vue'
+import AboutDialog from './AboutDialog.vue'
+import HelpDialog from './HelpDialog.vue'
 import PositionSource from './PositionSource.vue'
-import SymbolLegend from './SymbolLegend.vue'
 
 defineEmits<{ (e: 'position'): void; (e: 'editor'): void; (e: 'routes'): void }>()
 
-const showLegend = ref(false)
+const showHelp = ref(false)
+const showAbout = ref(false)
 
 const $q = useQuasar()
 const dev = useDevice()
@@ -195,20 +177,5 @@ onBeforeUnmount(() => {
 }
 .hidden {
   display: none;
-}
-.bordered-card {
-  border: 1px solid rgba(128, 128, 128, 0.35);
-}
-kbd {
-  display: inline-block;
-  padding: 0 5px;
-  margin: 0 1px;
-  border: 1px solid rgba(128, 128, 128, 0.6);
-  border-radius: 3px;
-  font-size: 11px;
-  background: rgba(128, 128, 128, 0.12);
-}
-.keys > div {
-  margin-bottom: 4px;
 }
 </style>
