@@ -1,7 +1,7 @@
 // Fonds de carte de la fenêtre « Position du bateau » : définitions pures (sans Leaflet) pour pouvoir les tester.
 //
 // Sources vérifiées (accès sans clé, en-tête CORS ouvert, tuiles 256 px en Web Mercator) :
-//  - OpenStreetMap          https://tile.openstreetmap.org/{z}/{x}/{y}.png
+//  - OpenStreetMap          https://tile.openstreetmap.org/{z}/{x}/{y}.png   (fond de « OpenSeaMap »)
 //  - OpenSeaMap (marques)   https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png   (couche transparente, à poser sur un fond)
 //  - Shom « Carte littorale » : service WMTS public de la Géoplateforme (IGN) data.geopf.fr, couche
 //    GEOGRAPHICALGRIDSYSTEMS.COASTALMAPS = « assemblage des cartes marines du Shom et des cartes terrestres de l'IGN »,
@@ -11,7 +11,9 @@
 //    (relief + profondeurs) et `emodnet:contours` (isobathes) ; couvre les mers d'Europe, dont le Royaume-Uni et l'Irlande.
 //    Ce n'est PAS une carte marine : les cartes Admiralty (UKHO, Royaume-Uni et Irlande) sont payantes, sans service de tuiles libre.
 
-export type BaseId = 'osm' | 'openseamap' | 'shom' | 'emodnet' | 'charts' | 'none'
+// OpenStreetMap n'est plus proposé seul : OpenSeaMap est le même fond OpenStreetMap avec les marques nautiques par-dessus, donc un choix
+// redondant. Les tuiles OpenStreetMap restent utilisées comme fond de « OpenSeaMap » (et leur serveur reste autorisé par la CSP).
+export type BaseId = 'openseamap' | 'shom' | 'emodnet' | 'charts' | 'none'
 
 export interface TileSpec {
   /** identifiant stable (clé de cache, préférences) */
@@ -37,8 +39,7 @@ export interface BaseOption {
 }
 
 export const BASE_OPTIONS: BaseOption[] = [
-  { id: 'osm', label: 'OpenStreetMap', hint: 'Fond routier et terrestre.' },
-  { id: 'openseamap', label: 'OpenSeaMap', hint: 'OpenStreetMap + marques nautiques (bouées, feux, amers) d’OpenSeaMap.' },
+  { id: 'openseamap', label: 'OpenSeaMap', hint: 'Fond OpenStreetMap + marques nautiques (bouées, feux, amers) d’OpenSeaMap.' },
   {
     id: 'shom',
     label: 'Shom — cartes marines',
@@ -64,8 +65,9 @@ export const BASE_OPTIONS: BaseOption[] = [
 export const CHARTS_MIN_ZOOM_RASTER = 5
 export const CHARTS_MIN_ZOOM_VECTOR = 3
 
-export const DEFAULT_BASE: BaseId = 'osm'
+export const DEFAULT_BASE: BaseId = 'openseamap'
 
+/** Fond de tuiles OpenStreetMap : sous les marques d'OpenSeaMap (plus un choix à part entière). */
 const OSM: TileSpec = {
   id: 'osm',
   url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -155,17 +157,19 @@ export function isBaseId(v: unknown): v is BaseId {
   return typeof v === 'string' && BASE_OPTIONS.some((o) => o.id === v)
 }
 
-/** Fond mémorisé → fond courant (l'ancien « Cartes BSB » est devenu « Cartes marines », tous formats) ; valeur inconnue : fond par défaut. */
+/**
+ * Fond mémorisé → fond courant : l'ancien « Cartes BSB » est devenu « Cartes marines » (tous formats), l'ancien « OpenStreetMap » seul est
+ * remplacé par OpenSeaMap (même fond de carte, avec les marques nautiques en plus) ; valeur inconnue : fond par défaut.
+ */
 export function normaliseBase(v: unknown): BaseId {
   if (v === 'bsb') return 'charts'
+  if (v === 'osm') return 'openseamap'
   return isBaseId(v) ? v : DEFAULT_BASE
 }
 
 /** Couches de fond à empiler (de la plus basse à la plus haute) pour le choix `id`. */
 export function baseLayers(id: BaseId): TileSpec[] {
   switch (id) {
-    case 'osm':
-      return [OSM]
     case 'openseamap':
       return [OSM, OPENSEAMAP]
     case 'shom':

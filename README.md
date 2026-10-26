@@ -83,7 +83,8 @@ service worker exigent HTTPS (ou `localhost`).
       HTTP sont signalés avec leur remède et « Réessayer » ; l'écran reste allumé pendant le suivi (Screen Wake Lock, là où le navigateur le permet) ; le suivi
       continue quand l'émulateur est « éteint » (BRILL), pour que le fix soit prêt à la remise sous tension.
       Cette fonction ne s'appuie sur aucun service en ligne : la position ne quitte pas l'appareil.
-- **Fonds de carte** (fenêtre « Position ») : **OpenStreetMap**, **OpenSeaMap** (OpenStreetMap + marques nautiques), **Shom — cartes
+- **Fonds de carte** (fenêtre « Position ») : **OpenSeaMap** (fond OpenStreetMap + marques nautiques ; c'est le fond par défaut, et OpenStreetMap
+  seul n'est plus proposé puisqu'il en est le même fond sans les marques : un ancien choix « OpenStreetMap » mémorisé devient OpenSeaMap), **Shom — cartes
   marines** (Carte littorale Shom/IGN), **Bathymétrie EMODnet** (relief, profondeurs et isobathes des mers d'Europe + marques
   OpenSeaMap) ou **sans fond**. Des couches Shom libres (balisage, épaves et obstructions, informations portuaires, dispositifs de
   séparation du trafic) se superposent à n'importe quel fond. Le choix est mémorisé. Aucun de ces services ne demande de clé ; chacun
