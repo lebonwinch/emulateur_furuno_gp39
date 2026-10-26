@@ -45,7 +45,7 @@ describe('buildGpx', () => {
       comment: 'cmt',
       points: [
         { wptId: 1, skip: false },
-        { wptId: 2, skip: true },
+        { wptId: 2, skip: false },
       ],
     },
   ]
@@ -55,8 +55,22 @@ describe('buildGpx', () => {
     expect(back.waypoints[0]).toMatchObject({ name: 'WP0001', comment: 'A&B', symbol: 0, color: 2, display: true })
     expect(back.waypoints[1]).toMatchObject({ symbol: 8, color: 0, display: false })
     expect(back.routes).toHaveLength(1)
-    expect(back.routes[0]!.points.map((p) => p.skip)).toEqual([false, true])
+    expect(back.routes[0]!.points.map((p) => p.name)).toEqual(['WP0001', 'WP0002'])
     expect(back.routes[0]!.name).toBe('R1')
+    expect(back.routes[0]!.comment).toBe('CMT') // majuscules : le GP-39 n'a pas de minuscules
+  })
+
+  it('un point « skip » n’est pas exporté (le format de route du GP-39 n’a pas de skip)', () => {
+    const skipped: Route[] = [
+      {
+        ...routes[0]!,
+        points: [
+          { wptId: 1, skip: false },
+          { wptId: 2, skip: true },
+        ],
+      },
+    ]
+    expect(parseGpx(buildGpx(wpts, skipped)).routes[0]!.points.map((p) => p.name)).toEqual(['WP0001'])
   })
 })
 

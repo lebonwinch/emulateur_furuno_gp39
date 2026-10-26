@@ -2,6 +2,7 @@
 
 import { reactive } from 'vue'
 import type { LatLon } from '@/gp39/geo'
+import { CHARSET_COMMENT, CHARSET_NAME } from '@/gp39/charset'
 import type { ConfirmView, EditSlot, EditView, KeyName, ListRow, ListView, MessageView, SelectView, View } from './types'
 
 export const ui = reactive({
@@ -183,8 +184,7 @@ export function openSelect(o: SelectOptions): SelectView {
 
 // -------------------------------------------------------------------- éditeur de champ
 
-export const CHARSET_NAME = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789&()+-/=?>_'
-export const CHARSET_COMMENT = '_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789&()+-/=?> '
+export { CHARSET_COMMENT, CHARSET_NAME }
 export const DIGITS = '0123456789'
 
 /** `pattern` : 9 = chiffre, N = N/S, E = E/W, + = signe, _ = caractère de texte, autre = littéral. */

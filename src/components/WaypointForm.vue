@@ -2,7 +2,7 @@
   <div class="wpt-form">
     <!-- un seul waypoint : édition -->
     <template v-if="single">
-      <div class="text-overline">Waypoint sélectionné</div>
+      <div v-if="!compact" class="text-overline">Waypoint sélectionné</div>
       <div class="row q-col-gutter-sm">
         <div class="col-6">
           <q-input
@@ -28,10 +28,10 @@
             @keyup.enter="commit({ comment: draft.comment })"
           />
         </div>
-        <div class="col-12">
+        <div v-if="!compact" class="col-12">
           <SymbolColorFields :symbol="draft.symbol" :color="draft.color" @update:symbol="onSymbol" @update:color="onColor" />
         </div>
-        <div class="col-6">
+        <div v-if="!compact" class="col-6">
           <q-input
             v-model.number="draft.lat"
             dense
@@ -45,7 +45,7 @@
             @keyup.enter="applyPos"
           />
         </div>
-        <div class="col-6">
+        <div v-if="!compact" class="col-6">
           <q-input
             v-model.number="draft.lon"
             dense
@@ -59,7 +59,7 @@
             @keyup.enter="applyPos"
           />
         </div>
-        <div class="col-12">
+        <div v-if="!compact" class="col-12">
           <q-select
             v-model="draft.layer"
             dense
@@ -73,16 +73,18 @@
         </div>
       </div>
       <q-toggle
+        v-if="!compact"
         v-model="draft.display"
         dense
         class="q-mt-sm"
         label="Affiché sur le plotter (GP39Flag)"
         @update:model-value="(v: boolean) => commit({ display: v })"
       />
-      <div class="text-caption text-grey-7 mono"
-        >{{ single.lat.toFixed(5) }}, {{ single.lon.toFixed(5) }} — glisser le repère orange pour déplacer</div
-      >
-      <div class="row q-gutter-sm q-mt-sm">
+      <div class="text-caption text-grey-7 mono">
+        {{ single.lat.toFixed(5) }}, {{ single.lon.toFixed(5)
+        }}<template v-if="!compact"> — glisser le repère orange pour déplacer</template>
+      </div>
+      <div v-if="!compact" class="row q-gutter-sm q-mt-sm">
         <q-btn color="negative" outline dense no-caps icon="delete" label="Supprimer" @click="emit('delete')" />
       </div>
     </template>
@@ -110,11 +112,13 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useDevice } from '@/stores/device'
+import { CHARSET_NAME, filterText } from '@/gp39/charset'
 import type { Waypoint } from '@/gp39/types'
 import SymbolColorFields from './SymbolColorFields.vue'
 import { lastColor, lastSymbol } from './useLastStyle'
 
-const props = defineProps<{ ids: readonly number[] }>()
+/** `compact` : seulement le nom et le commentaire (éditeur de routes : on peut nommer un waypoint pour l'ajouter à une route). */
+const props = defineProps<{ ids: readonly number[]; compact?: boolean }>()
 const emit = defineEmits<{ (e: 'delete'): void }>()
 
 const $q = useQuasar()
@@ -151,6 +155,16 @@ function load(w: Waypoint): void {
     layer: w.layer ?? 0,
   })
 }
+// compact (éditeur de routes) : le nom est ramené au jeu de caractères que l'appareil sait saisir (majuscules, A-Z 0-9 & ( ) + - / = ? > _)
+watch(
+  () => draft.name,
+  (v) => {
+    if (!props.compact) return
+    const f = filterText(v, CHARSET_NAME, 8)
+    if (f !== v) draft.name = f
+  },
+)
+
 // recharge à chaque changement de sélection ou de données (déplacement à la souris, autre onglet de la liste…)
 watch(
   () => [single.value?.id, dev.wptVersion],

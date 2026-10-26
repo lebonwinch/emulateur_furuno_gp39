@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef, triggerRef, watch } from 'vue'
 import { bearing, crossTrack, distance, magneticVariation, norm360, rhumbDestination, type LatLon } from '@/gp39/geo'
 import { buildGpx, parseGpx } from '@/gp39/gpx'
+import { cleanRouteComment, cleanRouteName, nameCounts, validateDraft, type RouteContext, type RouteDraft } from '@/gp39/routes'
 import {
   DEVICE_LAYER_NAME,
   cleanLayerName,
@@ -336,6 +337,36 @@ export const useDevice = defineStore('device', () => {
     if (dest.value?.kind === 'route' && dest.value.routeNo === no) return false
     routes.value = routes.value.filter((r) => r.no !== no)
     return true
+  }
+
+  /** Contexte de contrôle des routes (waypoints par identifiant, noms en double) : recalculé à chaque appel, à l'échelle d'une action de l'utilisateur. */
+  function routeContext(): RouteContext {
+    void wptVersion.value
+    return { routes: routes.value, byId: wptById.value, nameCount: nameCounts(waypoints.value) }
+  }
+
+  /**
+   * Enregistre une route éditée : crée la route (numéro libre le plus petit) ou met à jour celle de `draft.no`. Rien n'est écrit si le contrôle
+   * trouve une erreur (nom absent ou déjà pris, waypoints disparus, mémoire des routes pleine…). La route est en place dès le retour.
+   */
+  function saveRoute(draft: RouteDraft): { ok: true; route: Route } | { ok: false; errors: string[] } {
+    const issues = validateDraft(draft, routeContext())
+    if (issues.errors.length) return { ok: false, errors: issues.errors }
+    const name = cleanRouteName(draft.name)
+    const comment = cleanRouteComment(draft.comment)
+    const points = draft.points.map((p) => ({ wptId: p.wptId, skip: p.skip }))
+    let no = draft.no
+    if (no === null) {
+      const created = addRoute(name)
+      if (!created) return { ok: false, errors: [`Mémoire des routes pleine : ${LIMITS.routes} routes au plus`] }
+      no = created.no
+    }
+    const r = routeByNo(no) // l'objet réactif de la liste (addRoute renvoie l'objet brut)
+    if (!r) return { ok: false, errors: ['Cette route n’existe plus'] }
+    r.name = name
+    r.comment = comment
+    r.points = points
+    return { ok: true, route: r }
   }
 
   function deleteAllRoutes(): void {
@@ -1012,13 +1043,16 @@ export const useDevice = defineStore('device', () => {
     // routes : rattachement aux waypoints par nom (ou par coordonnées)
     let nRoutes = 0
     for (const ir of parsed.routes) {
-      const route = addRoute(ir.name || undefined)
+      // nom et commentaire ramenés à ce que l'appareil peut saisir (majuscules, jeu de caractères, 6 et 18 caractères)
+      const name = cleanRouteName(ir.name)
+      const route = addRoute(name || undefined)
       if (!route) {
         warnings.push(`route ${ir.name || '?'} ignorée (limite ${LIMITS.routes})`)
         break
       }
-      route.name = ir.name.slice(0, LIMITS.routeNameLen) || route.name
-      route.comment = ir.comment
+      if (name && name !== ir.name) warnings.push(`route « ${ir.name} » renommée « ${name} » (jeu de caractères du GP-39)`)
+      route.name = name || route.name
+      route.comment = cleanRouteComment(ir.comment)
       for (const p of ir.points) {
         const close = (x: Waypoint): boolean => Math.abs(x.lat - p.lat) < 1e-5 && Math.abs(x.lon - p.lon) < 1e-5
         // même nom ET même position ; à défaut, simple coïncidence de position
@@ -1032,10 +1066,13 @@ export const useDevice = defineStore('device', () => {
     return { waypoints: r.added, routes: nRoutes, warnings, layerId: r.layerId }
   }
 
-  /** Texte GPX des waypoints (sans Quick Point) et des routes ; `layerIds` : seulement ces calques (et les routes qui y tiennent). */
-  function exportGpx(layerIds?: ReadonlySet<number> | null): string {
+  /**
+   * Texte GPX des waypoints (sans Quick Point) et des routes ; `layerIds` : seulement ces calques (et les routes qui y tiennent) ;
+   * `withRoutes` faux : waypoints seuls (le format des waypoints est celui de l'appareil, celui des routes n'est pas vérifié sur matériel).
+   */
+  function exportGpx(layerIds?: ReadonlySet<number> | null, withRoutes = true): string {
     const s = selectForExport(waypoints.value, routes.value, layerIds ?? null)
-    return buildGpx(s.waypoints, s.routes)
+    return buildGpx(s.waypoints, withRoutes ? s.routes : [])
   }
 
   async function loadDefaultDataset(): Promise<void> {
@@ -1239,6 +1276,8 @@ export const useDevice = defineStore('device', () => {
     routeByNo,
     addRoute,
     deleteRoute,
+    routeContext,
+    saveRoute,
     deleteAllRoutes,
     routeSequence,
     setDestWaypoint,

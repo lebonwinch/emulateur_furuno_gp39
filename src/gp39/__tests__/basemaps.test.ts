@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   BASE_OPTIONS,
+  DEFAULT_BASE,
   CHARTS_MIN_ZOOM_RASTER,
   CHARTS_MIN_ZOOM_VECTOR,
   SHOM_OVERLAYS,
@@ -19,14 +20,15 @@ import {
 const html = readFileSync(fileURLToPath(new URL('../../../index.html', import.meta.url)), 'utf8')
 
 const allSpecs = (): TileSpec[] => [
-  ...(['osm', 'openseamap', 'shom', 'emodnet', 'none'] as BaseId[]).flatMap((id) => baseLayers(id)),
+  ...(['openseamap', 'shom', 'emodnet', 'none'] as BaseId[]).flatMap((id) => baseLayers(id)),
   ...SHOM_OVERLAYS.map(shomOverlaySpec),
 ]
 
 describe('fonds de carte', () => {
-  it('propose OpenStreetMap, OpenSeaMap, Shom, EMODnet, cartes marines locales et « sans fond »', () => {
-    expect(BASE_OPTIONS.map((o) => o.id)).toEqual(['osm', 'openseamap', 'shom', 'emodnet', 'charts', 'none'])
+  it('propose OpenSeaMap, Shom, EMODnet, cartes marines locales et « sans fond » (OpenStreetMap seul est redondant avec OpenSeaMap)', () => {
+    expect(BASE_OPTIONS.map((o) => o.id)).toEqual(['openseamap', 'shom', 'emodnet', 'charts', 'none'])
     expect(BASE_OPTIONS.every((o) => o.label && o.hint)).toBe(true)
+    expect(BASE_OPTIONS.some((o) => /^OpenStreetMap$/i.test(o.label))).toBe(false)
   })
 
   it('EMODnet : bathymétrie WMS + isobathes + marques OpenSeaMap, mers du Royaume-Uni et d’Irlande comprises', () => {
@@ -61,7 +63,7 @@ describe('fonds de carte', () => {
     expect(shom!.maxNativeZoom).toBe(16)
     expect(shom!.maxZoom).toBeGreaterThan(16)
     expect(baseMinZoom('shom')).toBe(6)
-    expect(baseMinZoom('osm')).toBe(2)
+    expect(baseMinZoom('openseamap')).toBe(2)
     expect(baseMinZoom('none')).toBe(2)
   })
 
@@ -84,11 +86,14 @@ describe('fonds de carte', () => {
     expect(isBaseId('bsb')).toBe(false)
   })
 
-  it('un fond mémorisé par une version précédente (« bsb ») devient « cartes marines » ; une valeur inconnue, le fond par défaut', () => {
+  it('un fond mémorisé par une version précédente devient son équivalent : « bsb » → cartes marines, « osm » → OpenSeaMap ; une valeur inconnue, le fond par défaut', () => {
     expect(normaliseBase('bsb')).toBe('charts')
+    expect(normaliseBase('osm')).toBe('openseamap')
     expect(normaliseBase('shom')).toBe('shom')
-    expect(normaliseBase('n’importe quoi')).toBe('osm')
-    expect(normaliseBase(null)).toBe('osm')
+    expect(normaliseBase('n’importe quoi')).toBe('openseamap')
+    expect(normaliseBase(null)).toBe('openseamap')
+    expect(DEFAULT_BASE).toBe('openseamap')
+    expect(isBaseId('osm')).toBe(false)
   })
 
   it('chaque URL est en https et contient les trois variables de tuile (XYZ ou WMTS)', () => {
@@ -121,7 +126,7 @@ describe('fonds de carte', () => {
   })
 
   it('attributions : OpenStreetMap avec lien vers le copyright et « contributors », OpenSeaMap, Shom/IGN', () => {
-    const [osm] = baseLayers('osm')
+    const [osm] = baseLayers('openseamap') // le fond d'OpenSeaMap est OpenStreetMap : son attribution doit rester affichée
     expect(osm!.attribution).toContain('https://www.openstreetmap.org/copyright')
     expect(osm!.attribution).toContain('contributors')
     expect(baseLayers('openseamap')[1]!.attribution).toContain('OpenSeaMap')

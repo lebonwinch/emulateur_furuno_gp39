@@ -43,7 +43,12 @@ service worker exigent HTTPS (ou `localhost`).
   | `B` (maintenu 3 s)              | BRILL / marche-arrêt            |
   | `+` `−`, molette sur l'écran    | zoom du plotter (0,02 → 320 NM) |
 
-  Dans un éditeur de champ (nom, latitude…), les caractères se tapent directement au clavier.
+  Dans un éditeur de champ (nom, latitude…), les caractères se tapent directement au clavier. Cette liste est aussi dans la fenêtre **« Aide… »** du panneau de
+  commande (onglet « Raccourcis clavier »).
+
+- **Aide et mentions** (bas du panneau de commande) : **« Aide… »** ouvre une fenêtre à deux onglets, « Légende des symboles » (règles `GP39Symbol` / `FECColor`
+  appliquées, avec le nombre de waypoints de chaque code) et « Raccourcis clavier » ; **« À propos et licences… »** ouvre la fenêtre des mentions légales (licence,
+  code source, crédits des données et des composants).
 
 - **Plotter** : le clic place le curseur, le glisser déplace la carte. ENT sur un waypoint ouvre _Goto / Move / Edit / Delete_ ;
   **GO TO avec le curseur** ouvre ce même menu s'il est sur un waypoint (_Goto_ trace alors le trait bleu et passe en distance/cap), et sinon crée un
@@ -83,7 +88,8 @@ service worker exigent HTTPS (ou `localhost`).
       HTTP sont signalés avec leur remède et « Réessayer » ; l'écran reste allumé pendant le suivi (Screen Wake Lock, là où le navigateur le permet) ; le suivi
       continue quand l'émulateur est « éteint » (BRILL), pour que le fix soit prêt à la remise sous tension.
       Cette fonction ne s'appuie sur aucun service en ligne : la position ne quitte pas l'appareil.
-- **Fonds de carte** (fenêtre « Position ») : **OpenStreetMap**, **OpenSeaMap** (OpenStreetMap + marques nautiques), **Shom — cartes
+- **Fonds de carte** (fenêtre « Position ») : **OpenSeaMap** (fond OpenStreetMap + marques nautiques ; c'est le fond par défaut, et OpenStreetMap
+  seul n'est plus proposé puisqu'il en est le même fond sans les marques : un ancien choix « OpenStreetMap » mémorisé devient OpenSeaMap), **Shom — cartes
   marines** (Carte littorale Shom/IGN), **Bathymétrie EMODnet** (relief, profondeurs et isobathes des mers d'Europe + marques
   OpenSeaMap) ou **sans fond**. Des couches Shom libres (balisage, épaves et obstructions, informations portuaires, dispositifs de
   séparation du trafic) se superposent à n'importe quel fond. Le choix est mémorisé. Aucun de ces services ne demande de clé ; chacun
@@ -152,8 +158,12 @@ service worker exigent HTTPS (ou `localhost`).
     corbeille = supprimer le calque **et ses waypoints**, clic sur le nom = renommer. « Ignorer les doublons déjà présents » (coché par défaut) n'importe
     pas un waypoint identique (nom, position à 1 m près, symbole, couleur) à un waypoint déjà chargé. Les waypoints créés sur l'appareil (MARK, MOB) et les
     données d'avant les calques sont dans le calque « Appareil ». Les traces `<trk>` ne sont pas lues.
-  - **Modes** : _Déplacer_ (clic = sélectionner, Ctrl/Maj + clic = ajouter, **Maj + glisser = rectangle de sélection**), _Sélection_ (glisser = rectangle ;
-    Ctrl = ajouter à la sélection) et _Ajouter_ (un clic crée un waypoint dans le calque actif, repéré par le bouton rond de la liste ; il reprend le **dernier symbole et la dernière couleur**
+  - **Sélection multiple** : à la souris, _Déplacer_ (clic = sélectionner, Ctrl/Maj + clic = ajouter, **Maj + glisser = rectangle de sélection**) et _Sélection_
+    (glisser = rectangle ; Ctrl = ajouter à la sélection). **Sur téléphone ou tablette** (pas de Ctrl ni de Maj) : le mode _Sélection_ trace le rectangle **au doigt**
+    (deux doigts déplacent et zooment la carte), et le bouton **Multi** de la barre d'outils fait _ajouter à la sélection_ au lieu de la remplacer, pour les
+    touchers (un second toucher retire le waypoint) comme pour les rectangles ; la tolérance de visée d'un toucher est plus large que celle d'une souris. Les
+    rectangles utilisent les événements « pointeur » (souris, doigt, stylet), les événements souris n'existent pas pour un glissement au doigt.
+  - **Modes** : _Déplacer_, _Sélection_ (ci-dessus) et _Ajouter_ (un clic crée un waypoint dans le calque actif, repéré par le bouton rond de la liste ; il reprend le **dernier symbole et la dernière couleur**
     choisis, qu'on voit sélectionnés dans le formulaire du volet de droite dès la création ; on les change en modifiant ceux du waypoint sélectionné ; rond vert au départ, mémorisés dans le navigateur). Échap quitte le mode puis
     vide la sélection ; Suppr supprime la sélection.
   - **Édition** : un seul waypoint sélectionné → formulaire (nom 8 car., commentaire 13 car., symbole, couleur, latitude/longitude, calque, affichage sur le
@@ -162,7 +172,39 @@ service worker exigent HTTPS (ou `localhost`).
   - **Export** : tous les waypoints de tous les calques (et les routes) dans **un seul fichier**, au nom modifiable (`.gpx` ajouté, caractères interdits
     remplacés par `_` ; le GP-39, lui, ne relit que `GP39_WptRte.gpx`). « Seulement les calques affichés » limite l'export aux calques visibles (une route
     n'est alors exportée que si tous ses points y sont). Le Quick Point n'est jamais exporté.
-- **Symboles** : le bouton « Légende des symboles… » affiche les règles `GP39Symbol` / `FECColor` appliquées, avec le nombre de
+- **Éditeur de routes** (panneau de commande, bloc « Données », bouton « Éditeur de routes… ») : fenêtre à carte qui partage avec l'éditeur de waypoints **le même
+  code** : fond de carte (choix mémorisé, cartes marines du dossier de l'utilisateur), couche de waypoints avec leurs pictogrammes GP-39 (`useEditorMap.ts`,
+  `useBaseMap.ts`, `BaseMapPicker.vue`), import de GPX (`useGpxImport.ts`), panneau d'export (`GpxExportPanel.vue`), fiche d'un waypoint (`WaypointForm.vue`).
+  Une route est une suite de waypoints (30 au plus), 100 routes au plus, nom de 6 caractères et commentaire de 18 caractères dans le jeu de caractères de
+  l'appareil (majuscules A-Z, chiffres et `& ( ) + - / = ? > _` ; la saisie est filtrée comme sur le GP-39).
+  - **Liste des routes** : nom, commentaire, nombre de points, longueur en NM ; une icône signale les routes à problèmes (waypoint sans nom, disparu…).
+    Un clic sur une route (dans la liste ou sur la carte) la montre en trait épais avec ses numéros et ses flèches de sens ; modifier (crayon) ou supprimer
+    (corbeille, avec confirmation ; la route qui est la destination en cours ne peut pas l'être). Le bouton **« Créer une nouvelle route »** ouvre l'édition.
+    Cette liste se **reconstitue depuis des fichiers GPX importés** (« Importer des GPX… » ou glisser-déposer) : leurs routes sont ajoutées, les points
+    rattachés aux waypoints par leur nom (et leur position), nom et commentaire ramenés au jeu de caractères du GP-39 (avec un avertissement).
+  - **Édition** (une copie de la route : rien n'est écrit dans l'appareil avant « Enregistrer ») : dans le panneau de droite, le **nom** (6 car.) et le commentaire ;
+    **un clic sur un waypoint de la carte** (ou une recherche par nom ou commentaire) le sélectionne et fait apparaître **« Ajouter à la route »**, et
+    « Insérer après le point N » quand un point de la liste est choisi. La liste des points se met à jour aussitôt (numéros, longueur de chaque tronçon et
+    relèvement, total en NM) ; chaque point se monte, se descend, s'ignore (**skip** : la navigation le saute) ou se retire ; « Inverser » et « Vider ».
+    Un balisage et son feu sans nom sont souvent au même endroit : le waypoint **nommé** est choisi d'abord, et les autres s'offrent en « Aussi à cet endroit ».
+    Un waypoint sans nom ne peut pas être ajouté : on le **nomme dans la fiche** (le GP-39 relie les routes aux waypoints par leur nom). Refus : 31e point, même
+    waypoint voisin, nom de route absent ou déjà pris. **« Enregistrer » est possible à tout moment** (une route de moins de 2 points est signalée comme
+    incomplète) et **quitte le mode édition** ; « Annuler » ou la fermeture de la fenêtre demandent confirmation s'il y a des modifications.
+  - **Export vers le GP-39** : le même fichier `GP39_WptRte.gpx` que l'éditeur de waypoints (les `<wpt>`, puis les routes ; case « Inclure les routes »), avec
+    **le format de route fourni pour l'appareil** :
+    ```xml
+    <rte>
+      <name>RTE001</name>
+      <cmt>MON ITINERAIRE</cmt>
+      <rtept lat="47.6432100" lon="-2.9123450"><name>WP0001</name></rtept>
+      <rtept lat="47.6521000" lon="-2.9245670"><name>WP0002</name></rtept>
+    </rte>
+    ```
+    Chaque `<rtept>` reprend **exactement le nom et les coordonnées d'un `<wpt>` du même fichier**. Nom (6 car.) et commentaire (18 car.) sont nettoyés (jeu de
+    caractères de l'appareil), `<cmt>` est toujours écrit (vide au besoin), une route est limitée à 30 points, il n'y a ni `<number>` ni skip : **les points
+    « skip » ne sont pas exportés** (le contrôle le signale). Avant l'export, un contrôle signale ce qui empêcherait l'appareil de relire une route (waypoint sans
+    nom, disparu, nom porté par plusieurs waypoints, plus de 100 routes…) et demande confirmation.
+- **Symboles** : l'onglet « Légende des symboles » de la fenêtre « Aide… » affiche les règles `GP39Symbol` / `FECColor` appliquées, avec le nombre de
   waypoints de chaque code dans le fichier chargé. Sur la carte de la fenêtre « Position », les waypoints gardent leur pictogramme et
   leur couleur ; survoler un point affiche son nom, son commentaire et ses codes.
 - **Données** : chargement d'un GPX (bouton ou glisser-déposer), export `GP39_WptRte.gpx` (le seul nom que le GP-39 sait relire),
@@ -195,8 +237,11 @@ service worker exigent HTTPS (ou `localhost`).
   nom (`--------` dans les listes). Les fichiers `export/balisage_GP39_*.gpx` générés par `export_gp39.py` leur attribuent un nom.
 - Réglages mémorisés mais **sans effet** : décalages Lat/Lon, lissages, datum, désactivation de satellites ; hors périmètre :
   mode SCX-21, TDs Loran C / Decca, import GP-32, interface autre qu'anglaise.
-- Le format des **routes** dans le GPX exporté (`<rte>`/`<rtept>`) est une convention de l'émulateur : le manuel ne le documente
-  pas (seuls les waypoints sont dans le format des fichiers du GP-39).
+- Le format des **routes** dans le GPX exporté (`<rte>`/`<rtept>`) est celui **fourni par l'utilisateur** pour l'appareil (ni le manuel ni les sources publiques ne le
+  documentent) ; il n'a pas été comparé à un fichier écrit par le GP-39 lui-même, ni chargé sur un GP-39 depuis cet émulateur. Les `<wpt>` ont, eux, la structure de
+  fichiers réels (`GP39Symbol`, `FECColor`, `GP39Comment`, `GP39Flag`). Le format n'a pas de skip : un point « skip » n'est pas exporté. **Le chargement dans le
+  GP-39 efface toutes ses données** : essayer d'abord avec une sauvegarde, ou exporter sans les routes (case « Inclure les routes »). L'import lit aussi le
+  commentaire d'une route dans `GP39Comment` ou `<desc>`, et un `GP39Skip` éventuel.
 - **GPS de l'appareil** : la position est celle que fournit le navigateur, sans satellites ni DOP réels (HDOP estimé) ; sur un ordinateur sans puce GPS, la
   précision (souvent 20 m à plusieurs km) est celle du positionnement Wi-Fi ou par adresse IP, et les positions de plus de 500 m d'incertitude sont ignorées ;
   les navigateurs suspendent la géolocalisation d'une page en arrière-plan ou d'un écran verrouillé (le suivi reprend au retour, avec une coupure dans la
@@ -216,11 +261,12 @@ src/gp39/cm93/       cartes CM93 : decode.ts + cell.ts (cellule), dict.ts + attr
 src/gp39/mbtiles/      cartes MBTiles : sqlite.ts (lecteur SQLite minimal), mbtiles.ts (tables, métadonnées, tuile), plan.ts (fichiers d'une tuile), render.ts, catalog.ts, engine.ts + mbtilesWorker.ts
 src/gp39/library.ts  dossier de cartes : parcours, reconnaissance automatique du format (BSB / CM93) ; tileQueue.ts : file des tuiles ; workerPool.ts : pool de Workers ; tileCompose.ts + chartsLayer.ts : superposition des formats, couche Leaflet commune
 src/gp39/layers.ts   calques et outils de l'éditeur (rattachement, rectangle de sélection, doublons, contenu d'un export) ; gpxFile.ts : nom du fichier exporté
-src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtres « Position » et « Éditeur de waypoints », panneau de contrôle
+src/gp39/routes.ts   routes : noms et commentaires du GP-39, points (ajout, ordre, skip), longueurs, contrôles et rapport avant export ; charset.ts : jeux de caractères de l'appareil ; selection.ts : règles de sélection de l'éditeur de waypoints
+src/components/      façade (GP39Device), LCD 480×272, écrans, fenêtres « Position », « Éditeur de waypoints » et « Éditeur de routes » (RouteEditorDialog.vue), « Aide » à deux onglets (HelpDialog.vue : SymbolLegendPanel.vue, KeyboardShortcuts.vue) et « À propos et licences » (AboutDialog.vue : AboutPanel.vue), panneau de contrôle ; useEditorMap / useGpxImport / GpxExportPanel : briques communes aux deux éditeurs
 public/data/         waypoints_GP39.gpx (jeu de données chargé au premier lancement ; citation du Shom dans ses métadonnées GPX)
 public/legal/        LICENSE et THIRD_PARTY_NOTICES.md servis avec l'application (copies générées par `npm run notices`)
 scripts/notices.mjs  génère THIRD_PARTY_NOTICES.md (avis et textes de licence des composants embarqués)
-src/gp39/about.ts    identité, licence et crédits (écran « À propos et licences », THIRD_PARTY_NOTICES.md, tests)
+src/gp39/about.ts    identité, licence et crédits (fenêtre « À propos et licences », THIRD_PARTY_NOTICES.md, tests)
 LICENSE              GNU General Public License version 3
 THIRD_PARTY_NOTICES.md  composants tiers, données, services et textes de licence (fichier généré)
 ```
@@ -238,7 +284,7 @@ publiée par la Free Software Foundation, soit la **version 3** de la licence, s
 pas même celle de sa valeur marchande ni de son adéquation à un usage particulier.
 
 - **Code source** : toute personne qui reçoit l'application (servie sur le web, installée comme PWA) doit pouvoir obtenir le code source
-  correspondant ; l'écran « À propos et licences » du panneau de commande renvoie au dépôt. Qui publie une version modifiée doit en faire de même.
+  correspondant ; la fenêtre « À propos et licences… » du panneau de commande renvoie au dépôt. Qui publie une version modifiée doit en faire de même.
 - **Composants tiers** : [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) (copie servie avec l'application dans `legal/`) donne, pour chaque
   composant embarqué (Vue, Quasar, Pinia, Vue Router, Leaflet, geomagnetism, polices Roboto / Roboto Condensed / VT323, icônes Material, workbox…),
   sa version, sa licence et son texte. Tous sont compatibles avec la GPL-3.0-or-later (MIT, BSD, Apache-2.0, SIL OFL). Le fichier est généré :
@@ -251,7 +297,7 @@ pas même celle de sa valeur marchande ni de son adéquation à un usage particu
 - **Données livrées** — `public/data/waypoints_GP39.gpx` : 2 252 balises extraites du jeu « Balisage maritime (aides à la navigation) » du Shom,
   filtrées et converties au format GPX, symboles et couleurs GP-39 ajoutés. Licence Ouverte Etalab 2.0 ; citation obligatoire :
   **« Shom, 2026. https://dx.doi.org/10.17183/DOI_BALISAGE_MARITIME »**. Ces données ne doivent pas servir à la navigation. La citation figure dans
-  les métadonnées du fichier GPX et dans l'écran « À propos et licences ».
+  les métadonnées du fichier GPX et dans la fenêtre « À propos et licences ».
 - **Fonds de carte en ligne** (chargés par le navigateur de l'utilisateur, jamais copiés ni mis en cache par l'application) : OpenStreetMap (ODbL,
   [politique d'usage des tuiles](https://operations.osmfoundation.org/policies/tiles/) à respecter : usage léger, attribution visible),
   OpenSeaMap (données ODbL, tuiles CC BY-SA 2.0), Géoplateforme de l'IGN ([CGU](https://cartes.gouv.fr/cgu) ; licence propre à chaque jeu de données),

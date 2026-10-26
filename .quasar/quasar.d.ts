@@ -28,12 +28,12 @@ interface ImportMetaEnv {
   readonly COMPUTERNAME?: string;
   readonly ComSpec?: string;
   readonly DriverData?: string;
-  readonly EFC_15116_1262719628?: number;
-  readonly EFC_15116_1592913036?: number;
-  readonly EFC_15116_2283032206?: number;
-  readonly EFC_15116_2775293581?: number;
-  readonly EFC_15116_3789132940?: number;
-  readonly EFC_15116_4126798990?: number;
+  readonly EFC_34612_1262719628?: number;
+  readonly EFC_34612_1592913036?: number;
+  readonly EFC_34612_2283032206?: number;
+  readonly EFC_34612_2775293581?: number;
+  readonly EFC_34612_3789132940?: number;
+  readonly EFC_34612_4126798990?: number;
   readonly FPS_BROWSER_APP_PROFILE_STRING?: string;
   readonly FPS_BROWSER_USER_PROFILE_STRING?: string;
   readonly HOMEDRIVE?: string;

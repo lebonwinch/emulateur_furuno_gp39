@@ -1,6 +1,7 @@
 // Import / export GPX au format « GP39_WptRte.gpx » (extensions GP39Symbol / FECColor / GP39Comment / GP39Flag).
 // Parseur volontairement léger (regex) : il fonctionne dans le navigateur comme sous Node (tests).
 
+import { cleanRouteComment, cleanRouteName } from './routes'
 import { DEFAULT_COLOR, DEFAULT_SYMBOL } from './symbols'
 import { LIMITS } from './types'
 import type { Route, Waypoint } from './types'
@@ -111,7 +112,8 @@ export function parseGpx(source: string): GpxImport {
     const head = body.replace(/<rtept\b[\s\S]*?<\/rtept>/g, '')
     routes.push({
       name: (tag(head, 'name') ?? '').slice(0, LIMITS.routeNameLen),
-      comment: (tag(head, 'cmt') ?? '').slice(0, LIMITS.routeCommentLen),
+      // commentaire : <cmt> (GPX standard), ou GP39Comment / <desc> (comme pour les waypoints de l'appareil)
+      comment: (tag(head, 'cmt') ?? tag(head, 'GP39Comment') ?? tag(head, 'desc') ?? '').slice(0, LIMITS.routeCommentLen),
       points: pts.slice(0, LIMITS.routeWaypoints),
     })
   }
@@ -142,17 +144,23 @@ export function buildGpx(waypoints: Waypoint[], routes: Route[]): string {
     out.push('  </extensions>')
     out.push('</wpt>')
   }
-  for (const r of routes) {
+  // Routes, au format donné par l'utilisateur pour le GP-39 :
+  //   <rte><name>RTE001</name><cmt>MON ITINERAIRE</cmt>
+  //     <rtept lat=".." lon=".."><name>WP0001</name></rtept> …</rte>
+  // Nom (6 car.), commentaire (18 car.) dans le jeu de caractères de l'appareil ; chaque point reprend EXACTEMENT le nom d'un <wpt> du fichier
+  // (mêmes coordonnées) ; 30 points au plus. Ni <number> ni skip : le format n'en a pas, les points « skip » ne sont donc pas écrits
+  // (`deviceExportReport` le signale). Le <cmt> est toujours là, vide s'il n'y a pas de commentaire.
+  for (const r of routes.slice(0, LIMITS.routes)) {
     out.push('<rte>')
-    out.push(`  <name>${escapeXml(r.name)}</name>`)
-    if (r.comment) out.push(`  <cmt>${escapeXml(r.comment)}</cmt>`)
-    out.push(`  <number>${r.no}</number>`)
+    out.push(`  <name>${escapeXml(cleanRouteName(r.name))}</name>`)
+    out.push(`  <cmt>${escapeXml(cleanRouteComment(r.comment))}</cmt>`)
+    let count = 0
     for (const p of r.points) {
       const w = byId.get(p.wptId)
-      if (!w) continue
+      if (!w || p.skip || count >= LIMITS.routeWaypoints) continue
+      count++
       out.push(`  <rtept lat="${f7(w.lat)}" lon="${f7(w.lon)}">`)
       if (w.name) out.push(`    <name>${escapeXml(w.name)}</name>`)
-      if (p.skip) out.push('    <extensions><GP39Skip>1</GP39Skip></extensions>')
       out.push('  </rtept>')
     }
     out.push('</rte>')
