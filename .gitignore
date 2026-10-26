@@ -37,3 +37,4 @@ yarn-error.log*
 /CM93*/
 /public/__cm93test__/
 /public/__bsbtest__/
+.quasar/quasar.d.ts
